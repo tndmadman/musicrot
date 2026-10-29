@@ -65,7 +65,7 @@ public final class CompositionIO {
         private void expect(char c){if(peek()!=c)throw bad("EXPECTED_"+c);i++;}
         private Object read(int depth){if(depth>32)throw bad("TOO_DEEP");char c=peek();
             if(c=='{'){i++;Map<String,Object> o=new LinkedHashMap<>();if(peek()=='}'){i++;return o;}
-                while(true){if(peek()!='"')throw bad("OBJECT_KEY");String key=quoted();expect(':');Object v=read(depth+1);if(o.putIfAbsent(key,v)!=null)throw bad("DUPLICATE_KEY");
+                while(true){if(peek()!='"')throw bad("OBJECT_KEY");String key=quoted();expect(':');Object v=read(depth+1);if(o.containsKey(key))throw bad("DUPLICATE_KEY");o.put(key,v);
                     char next=peek();if(next=='}'){i++;return o;}expect(',');}
             }
             if(c=='['){i++;List<Object> a=new ArrayList<>();if(peek()==']'){i++;return a;}
