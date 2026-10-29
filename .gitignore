@@ -1,0 +1,11 @@
+build/
+output/
+demos/
+chordflow-data/
+stress-output/
+*.log
+*.mp4
+*.wav
+*.mid
+*.composition.json
+stress-report.json
