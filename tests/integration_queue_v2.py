@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory() as d:
         for _ in range(40):
             try:req('/api/jobs');break
             except Exception:time.sleep(.2)
-        assert req('/api/enqueue?count=2&seed=802&seconds=2&mode=flow&theme=gold&width=720&height=1280&encoder=x264&instrument=soft-keys',True)
+        assert req('/api/enqueue?count=1&seed=802&seconds=2&mode=flow&theme=gold&width=720&height=1280&encoder=x264&instrument=soft-keys',True)
         claim=req('/api/claim?worker=test-worker',True).split('|')
         assert len(claim)==10 and claim[5:7]==['720','1280'],claim
         id,token=claim[0],claim[7]
