@@ -14,7 +14,7 @@ public final class Production {
     public static Result render(Composition c,Path out,int width,int height,int fps,String encoder)throws Exception{
         if(width<160||height<160||fps<10||fps>60||width%2!=0||height%2!=0)throw new IllegalArgumentException("INVALID_RENDER_SPEC");
         if(!has("ffmpeg")||!has("ffprobe"))throw new IOException("DEPENDENCY_UNAVAILABLE: ffmpeg/ffprobe");
-        long begin=System.nanoTime();Files.createDirectories(out);String job="chordflow-"+c.seed+"-"+c.mode+"-"+width;
+        long begin=System.nanoTime();Files.createDirectories(out);String job="chordflow-"+c.seed+"-"+c.mode+"-"+width+"-"+UUID.randomUUID().toString().substring(0,8);
         Path finalVideo=out.resolve(job+".mp4"),finalManifest=out.resolve(job+".manifest.json");
         if(Files.exists(finalVideo))throw new IOException("OUTPUT_EXISTS: "+finalVideo);
         Path temp=Files.createTempDirectory(out,".cf-partial-");
@@ -31,10 +31,18 @@ public final class Production {
             String sha=hash(candidate);String manifest="{\"schemaVersion\":1,\"sha256\":\""+sha+"\",\"seed\":"+c.seed+",\"mode\":\""+c.mode+"\",\"encoder\":\""+chosen+"\",\"audioRms\":"+audio.rms()+",\"durationSeconds\":"+c.duration+",\"verified\":true,\"license\":\""+c.rights+"\"}\n";
             Path manifestTemp=temp.resolve("manifest.json");Files.writeString(manifestTemp,manifest);
             // No partial video or false READY status: both QA and checksum precede promotion.
-            Files.move(manifestTemp,finalManifest,StandardCopyOption.ATOMIC_MOVE);Files.move(candidate,finalVideo,StandardCopyOption.ATOMIC_MOVE);
-            // Preserve canonical sources for reproducibility. No copy of reference audio or art.
-            Files.copy(json,out.resolve(job+".composition.json"),StandardCopyOption.REPLACE_EXISTING);
-            Files.copy(midi,out.resolve(job+".mid"),StandardCopyOption.REPLACE_EXISTING);
+            // Promote the manifest LAST: any interrupted promotion has no READY evidence.
+            // The controller independently validates its hash, codec and complete decode.
+            try{
+                Files.copy(json,out.resolve(job+".composition.json"));
+                Files.copy(midi,out.resolve(job+".mid"));
+                Files.move(candidate,finalVideo,StandardCopyOption.ATOMIC_MOVE);
+                Files.move(manifestTemp,finalManifest,StandardCopyOption.ATOMIC_MOVE);
+            }catch(Exception promotionFailure){
+                Files.deleteIfExists(finalManifest);Files.deleteIfExists(finalVideo);
+                Files.deleteIfExists(out.resolve(job+".composition.json"));Files.deleteIfExists(out.resolve(job+".mid"));
+                throw promotionFailure;
+            }
             return new Result(finalVideo,finalManifest,sha,audio,chosen,(System.nanoTime()-begin)/1_000_000);
         }finally{try(var files=Files.walk(temp)){files.sorted(Comparator.reverseOrder()).forEach(p->{try{Files.deleteIfExists(p);}catch(IOException ignored){}});}}
     }
@@ -57,6 +65,19 @@ public final class Production {
         if(!info.contains("\"width\": "+width)||!info.contains("\"height\": "+height))throw new IOException("VIDEO_DIMENSION_QA_FAILED");
         Matcher m=Pattern.compile("\\\"duration\\\"\\s*:\\s*\\\"([0-9.]+)\\\"").matcher(info);if(!m.find()||Math.abs(Double.parseDouble(m.group(1))-expected)>.20)throw new IOException("VIDEO_DURATION_QA_FAILED: "+info);
         Matcher f=Pattern.compile("\\\"nb_frames\\\"\\s*:\\s*\\\"(\\d+)\\\"").matcher(info);if(f.find()&&Math.abs(Integer.parseInt(f.group(1))-Math.round(expected*fps))>1)throw new IOException("VIDEO_FRAME_COUNT_QA_FAILED");
+        // Independently decode and inspect the delivered AAC, not merely the input WAV.
+        Process audioProbe=new ProcessBuilder("ffmpeg","-hide_banner","-nostats","-i",video.toString(),"-map","0:a:0","-af","ebur128=peak=true","-f","null","-").start();
+        audioProbe.getInputStream().transferTo(OutputStream.nullOutputStream());
+        String loudness=new String(audioProbe.getErrorStream().readAllBytes());
+        if(audioProbe.waitFor()!=0)throw new IOException("AUDIO_LOUDNESS_PROBE_FAILED");
+        int summary=loudness.lastIndexOf("Summary:");if(summary<0)throw new IOException("AAC_LOUDNESS_MISSING");
+        String measurements=loudness.substring(summary);
+        Matcher lufs=Pattern.compile("\\bI:\\s*(-?[0-9.]+) LUFS").matcher(measurements);
+        Matcher peak=Pattern.compile("\\bPeak:\\s*(-?[0-9.]+) dBFS").matcher(measurements);
+        if(!lufs.find()||!peak.find())throw new IOException("AAC_LOUDNESS_PARSE_ERROR");
+        double integrated=Double.parseDouble(lufs.group(1)),truePeak=Double.parseDouble(peak.group(1));
+        if(!Double.isFinite(integrated)||integrated < -24||integrated > -10||!Double.isFinite(truePeak)||truePeak > -1.0)
+            throw new IOException("AAC_AUDIO_QA_FAILED lufs="+integrated+" truePeak="+truePeak);
         // Full decode catches corrupt frame sequences, not just broken headers.
         Process decode=new ProcessBuilder("ffmpeg","-v","error","-xerror","-i",video.toString(),"-f","null","-").start();decode.getInputStream().transferTo(OutputStream.nullOutputStream());String decodeErr=new String(decode.getErrorStream().readAllBytes());if(decode.waitFor()!=0)throw new IOException("VIDEO_DECODE_FAILED "+decodeErr);
     }

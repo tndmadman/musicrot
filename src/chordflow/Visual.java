@@ -23,24 +23,29 @@ public final class Visual {
         for(Composition.Chord chord:c.chords){double x=playX+(chord.start()-t)*pxps;if(x<0||x>w)continue;g.setColor(new Color(34,39,63));g.draw(new Line2D.Double(x,h*.20,x,h*.66));}
         for(int i=-8;i<=8;i++){double y=cy+i*21*scale;g.setColor(new Color(24,29,51));g.draw(new Line2D.Double(w*.07,y,w*.93,y));}
         for(Composition.Chord chord:c.chords){double x=playX+(chord.start()-t)*pxps;if(x<0||x>w)continue;g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(9,(int)(11*scale))));g.setColor(new Color(116,126,162));g.drawString(chord.symbol(),(int)x+2,(int)(h*.19));}
-        // Trajectories: note pitch is static within a chord, with Bezier movement at an actual chord boundary.
-        int voiceCount=c.notes.stream().mapToInt(n->Integer.parseInt(n.voice().replaceAll("[^0-9]",""))).max().orElse(0)+1;
-        for(int v=0;v<voiceCount;v++){
-            Color color=palette[v%palette.length];Path2D path=new Path2D.Double();boolean begun=false;
-            for(int j=0;j<c.chords.size();j++){
-                Composition.Chord chord=c.chords.get(j); if(v>=chord.pitches().length){begun=false;continue;}
-                double x0=playX+(chord.start()-t)*pxps,x1=playX+(chord.start()+chord.duration()-t)*pxps;
-                double yy=yPitch(chord.pitches()[v],cy,scale);
-                double xCur=Math.max(-w*.05,x0),xEnd=Math.min(w*1.05,x1);
-                if(xEnd<0||xCur>w)continue;
-                if(!begun){path.moveTo(xCur,yy);begun=true;}
-                double curveWidth=Math.min(25*scale,(x1-x0)*.30);
-                double flatEnd=x1-curveWidth;
-                if(flatEnd>xCur)path.lineTo(Math.min(w*1.05,flatEnd),yy);
-                if(j+1<c.chords.size()&&v<c.chords.get(j+1).pitches().length){double next=yPitch(c.chords.get(j+1).pitches()[v],cy,scale);path.curveTo(x1-curveWidth*.5,yy,x1-curveWidth*.5,next,x1,next);}else path.lineTo(xEnd,yy);
+        // Each illuminated segment is an actual sounding note; no Bezier sweep invents
+        // intermediate pitches across a chord change. This also supports imported voices.
+        Map<String,List<Composition.Note>> voices=new LinkedHashMap<>();
+        for(Composition.Note n:c.notes)voices.computeIfAbsent(n.voice(),k->new ArrayList<>()).add(n);
+        int voiceIndex=0,labels=0;
+        for(var entry:voices.entrySet()){
+            Color color=palette[voiceIndex++%palette.length];Path2D segments=new Path2D.Double();
+            for(Composition.Note n:entry.getValue()){
+                double x0=playX+(n.start()-t)*pxps;
+                double x1=playX+(n.start()+n.duration()-t)*pxps;
+                if(x1<0||x0>w)continue;
+                double y=yPitch(n.pitch(),cy,scale);
+                segments.moveTo(Math.max(-w*.05,x0),y);
+                segments.lineTo(Math.min(w*1.05,x1),y);
             }
-            stroke(path,color,scale);
-            Composition.Chord now=c.at(t);if(v<now.pitches().length){double yy=yPitch(now.pitches()[v],cy,scale);g.setColor(new Color(255,255,255,35));g.fill(new Ellipse2D.Double(playX-8*scale,yy-8*scale,16*scale,16*scale));g.setColor(color);g.fill(new Ellipse2D.Double(playX-3.4*scale,yy-3.4*scale,6.8*scale,6.8*scale));g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(10,(int)(12*scale))));g.drawString(Composition.pitchName(now.pitches()[v]),(int)(playX+9*scale),(int)(yy+3*scale));}
+            stroke(segments,color,scale);
+            for(Composition.Note n:entry.getValue()){
+                if(!(n.start()<=t+1e-9&&n.start()+n.duration()>t+1e-9))continue;
+                double y=yPitch(n.pitch(),cy,scale);
+                g.setColor(new Color(255,255,255,35));g.fill(new Ellipse2D.Double(playX-8*scale,y-8*scale,16*scale,16*scale));
+                g.setColor(color);g.fill(new Ellipse2D.Double(playX-3.4*scale,y-3.4*scale,6.8*scale,6.8*scale));
+                if(labels++<12){g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(10,(int)(12*scale))));g.drawString(Composition.pitchName(n.pitch()),(int)(playX+9*scale),(int)(y+3*scale));}
+            }
         }
         g.setColor(new Color(226,233,251));g.setFont(new Font("SansSerif",Font.BOLD,Math.max(32,(int)(56*scale))));drawCentered(c.at(t).symbol(),(int)(h*.124));
         g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(10,(int)(13*scale))));g.setColor(new Color(131,148,186));drawCentered("CHORDFLOW  •  ORIGINAL COMPOSITION",(int)(h*.151));

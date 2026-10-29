@@ -33,7 +33,7 @@ public final class Audio {
         double max=0,sum=0;int silent=0;
         for(int i=0;i<count;i++){max=Math.max(max,Math.max(Math.abs(left[i]),Math.abs(right[i])));sum+=(left[i]*left[i]+right[i]*right[i])*0.5;if(Math.abs(left[i])+Math.abs(right[i])<.0004)silent++;}
         if(max<.00001)throw new IOException("AUDIO_SILENT");
-        double scale=.78/max,peak=0;
+        double scale=.50/max,peak=0; // target typical short-form integrated loudness near -15 LUFS
         Files.createDirectories(wav.toAbsolutePath().getParent());
         try(OutputStream out=new BufferedOutputStream(Files.newOutputStream(wav))){
             int bytes=count*4;out.write(new byte[]{'R','I','F','F'});writeInt(out,36+bytes);out.write(new byte[]{'W','A','V','E','f','m','t',' '});writeInt(out,16);writeShort(out,1);writeShort(out,2);writeInt(out,RATE);writeInt(out,RATE*4);writeShort(out,4);writeShort(out,16);out.write(new byte[]{'d','a','t','a'});writeInt(out,bytes);
