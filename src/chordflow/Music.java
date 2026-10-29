@@ -41,28 +41,81 @@ public final class Music {
         }
         return new Composition(seed,"Original Harmony "+seed,mode,theme,"ORIGINAL_GENERATED",mode.equals("guitar")?"C":ROOTS[position],"major",bpm,seconds,chords,notes);
     }
+    /** MIDI export uses the exact composition tempo map, retaining imported tempo events. */
     public static void writeMidi(Composition c,Path path)throws Exception{
-        Sequence seq=new Sequence(Sequence.PPQ,960);Track t=seq.createTrack();int mpqn=(int)Math.round(60000000/c.bpm);MetaMessage tempo=new MetaMessage();tempo.setMessage(0x51,new byte[]{(byte)(mpqn>>16),(byte)(mpqn>>8),(byte)mpqn},3);t.add(new MidiEvent(tempo,0));
-        List<MidiEvent> ev=new ArrayList<>();for(Composition.Note n:c.notes){int tick=(int)Math.round(n.start()*c.bpm/60*960),end=(int)Math.round((n.start()+n.duration())*c.bpm/60*960);ShortMessage on=new ShortMessage(ShortMessage.NOTE_ON,0,n.pitch(),n.velocity());ShortMessage off=new ShortMessage(ShortMessage.NOTE_OFF,0,n.pitch(),0);ev.add(new MidiEvent(on,tick));ev.add(new MidiEvent(off,end));}
+        Sequence seq=new Sequence(Sequence.PPQ,960);Track t=seq.createTrack();
+        for(Composition.Tempo tempo:c.tempoMap){int mpqn=(int)Math.round(60000000/tempo.bpm());MetaMessage m=new MetaMessage();m.setMessage(0x51,new byte[]{(byte)(mpqn>>16),(byte)(mpqn>>8),(byte)mpqn},3);t.add(new MidiEvent(m,(long)Math.round(tempo.beat()*960)));}
+        List<MidiEvent> ev=new ArrayList<>();for(Composition.Note n:c.notes){
+            long tick=Math.round(c.beatAtSeconds(n.start())*960),end=Math.round(c.beatAtSeconds(n.start()+n.duration())*960);
+            if(end<=tick)throw new IllegalArgumentException("MIDI_NOTE_TOO_SHORT");
+            ShortMessage on=new ShortMessage(ShortMessage.NOTE_ON,0,n.pitch(),n.velocity());ShortMessage off=new ShortMessage(ShortMessage.NOTE_OFF,0,n.pitch(),0);
+            ev.add(new MidiEvent(on,tick));ev.add(new MidiEvent(off,end));
+        }
         ev.sort(Comparator.comparingLong(MidiEvent::getTick).thenComparingInt(e->((ShortMessage)e.getMessage()).getCommand()==ShortMessage.NOTE_OFF?0:1));for(MidiEvent e:ev)t.add(e);
         Files.createDirectories(path.toAbsolutePath().getParent());MidiSystem.write(seq,1,path.toFile());
     }
-    /** Import only monophonic change boundaries or block-chord MIDI; provenance is mandatory. */
+    private record MidiMsg(long tick,int track,ShortMessage message) {}
+    private record NoteOn(long tick,int velocity) {}
+    private record Extracted(long start,long end,int pitch,int velocity,String voice) {}
+    /** Import multi-track, variable-tempo PPQ MIDI. Note-off sustain-pedal semantics are preserved. */
     public static Composition importMidi(Path midi,String rights,long seed,int seconds,String theme)throws Exception{
         if(rights==null||rights.isBlank()||rights.equals("ORIGINAL_GENERATED"))throw new IllegalArgumentException("IMPORT_RIGHTS_REQUIRED");
-        Sequence seq=MidiSystem.getSequence(midi.toFile()); if(seq.getDivisionType()!=Sequence.PPQ)throw new IllegalArgumentException("MIDI_PPQ_REQUIRED");
-        double bpm=120;for(Track tr:seq.getTracks())for(int i=0;i<tr.size();i++){MidiMessage msg=tr.get(i).getMessage();if(msg instanceof MetaMessage m&&m.getType()==0x51){byte[] d=m.getData();if(d.length==3)bpm=60000000.0/(((d[0]&255)<<16)|((d[1]&255)<<8)|(d[2]&255));break;}}
-        // MIDI import is explicit about supported format. Reject changing tempo rather than desynchronize graphics.
-        for(Track tr:seq.getTracks())for(int i=0;i<tr.size();i++){MidiMessage msg=tr.get(i).getMessage();if(msg instanceof MetaMessage m&&m.getType()==0x51&&tr.get(i).getTick()>0)throw new IllegalArgumentException("MIDI_TEMPO_MAP_UNSUPPORTED");}
-        Map<String,Long> active=new HashMap<>();List<Composition.Note> notes=new ArrayList<>();
-        for(Track tr:seq.getTracks())for(int i=0;i<tr.size();i++){
-            MidiEvent ev=tr.get(i);if(!(ev.getMessage() instanceof ShortMessage m))continue;int channel=m.getChannel(),pitch=m.getData1();String k=channel+":"+pitch;double time=ev.getTick()/((double)seq.getResolution())*60/bpm;
-            if(m.getCommand()==ShortMessage.NOTE_ON&&m.getData2()>0){if(active.put(k,ev.getTick())!=null)throw new IllegalArgumentException("MIDI_OVERLAP_SAME_PITCH");}
-            else if(m.getCommand()==ShortMessage.NOTE_OFF||(m.getCommand()==ShortMessage.NOTE_ON&&m.getData2()==0)){Long begin=active.remove(k);if(begin==null)throw new IllegalArgumentException("MIDI_UNMATCHED_OFF");double s=begin/((double)seq.getResolution())*60/bpm;if(time>s)notes.add(new Composition.Note("midi-"+channel+"-"+pitch,pitch,s,time-s,76));}
+        if(seconds<2||seconds>180)throw new IllegalArgumentException("DURATION_OUT_OF_RANGE");
+        Sequence seq=MidiSystem.getSequence(midi.toFile());
+        if(seq.getDivisionType()!=Sequence.PPQ||seq.getResolution()<=0)throw new IllegalArgumentException("MIDI_PPQ_REQUIRED");
+        if(seq.getTracks().length>64)throw new IllegalArgumentException("MIDI_TOO_MANY_TRACKS");
+        NavigableMap<Long,Double> tempos=new TreeMap<>();tempos.put(0L,120.0);
+        List<MidiMsg> stream=new ArrayList<>();
+        for(int ti=0;ti<seq.getTracks().length;ti++){
+            Track track=seq.getTracks()[ti];
+            for(int i=0;i<track.size();i++){
+                MidiEvent ev=track.get(i);MidiMessage msg=ev.getMessage();
+                if(msg instanceof MetaMessage meta && meta.getType()==0x51){
+                    byte[] d=meta.getData();if(d.length!=3)throw new IllegalArgumentException("MIDI_BAD_TEMPO");
+                    int micros=((d[0]&255)<<16)|((d[1]&255)<<8)|(d[2]&255);
+                    if(micros<200000||micros>3000000)throw new IllegalArgumentException("MIDI_BAD_TEMPO");
+                    tempos.put(ev.getTick(),60000000.0/micros);
+                }
+                if(msg instanceof ShortMessage shortMessage)stream.add(new MidiMsg(ev.getTick(),ti,shortMessage));
+            }
         }
-        if(!active.isEmpty()||notes.isEmpty())throw new IllegalArgumentException("MIDI_UNMATCHED_NOTES");
-        notes.sort(Comparator.comparingDouble(Composition.Note::start));TreeSet<Double> starts=new TreeSet<>();for(Composition.Note n:notes)starts.add(n.start());List<Double> ts=new ArrayList<>(starts);List<Composition.Chord> chords=new ArrayList<>();
-        for(int i=0;i<ts.size();i++){double t=ts.get(i),len=(i+1<ts.size()?ts.get(i+1):seconds)-t;if(len<=0)continue;List<Integer> pitches=new ArrayList<>();for(Composition.Note n:notes)if(n.start()<=t+1e-7&&n.start()+n.duration()>t+1e-7)pitches.add(n.pitch());if(!pitches.isEmpty())chords.add(new Composition.Chord(t,len,"MIDI chord",pitches.stream().mapToInt(Integer::intValue).toArray(),null));}
-        return new Composition(seed,"Licensed MIDI "+midi.getFileName(),"flow",theme,rights,bpm,seconds,chords,notes);
+        List<Composition.Tempo> timeline=new ArrayList<>();for(var e:tempos.entrySet())timeline.add(new Composition.Tempo(e.getKey()/(double)seq.getResolution(),e.getValue()));
+        java.util.function.LongToDoubleFunction toSeconds=(tick)->{
+            double out=0;long previous=0;double bpm=120;
+            for(var entry:tempos.entrySet()){
+                if(entry.getKey()>tick)break;
+                out+=(entry.getKey()-previous)*60/(bpm*seq.getResolution());previous=entry.getKey();bpm=entry.getValue();
+            }
+            return out+(tick-previous)*60/(bpm*seq.getResolution());
+        };
+        stream.sort(Comparator.comparingLong(MidiMsg::tick).thenComparingInt(m->{
+            int cmd=m.message().getCommand();return cmd==ShortMessage.NOTE_OFF||(cmd==ShortMessage.NOTE_ON&&m.message().getData2()==0)?0:1;
+        }));
+        Map<String,Deque<NoteOn>> active=new HashMap<>();Map<String,List<Extracted>> held=new HashMap<>();Map<String,Boolean> pedal=new HashMap<>();List<Extracted> extracted=new ArrayList<>();
+        for(MidiMsg event:stream){ShortMessage m=event.message();int cmd=m.getCommand(),channel=m.getChannel(),pitch=m.getData1();String lane=event.track()+"-"+channel, key=lane+"-"+pitch;
+            if(cmd==ShortMessage.CONTROL_CHANGE&&pitch==64){boolean down=m.getData2()>=64;
+                if(!down&&pedal.getOrDefault(lane,false)){
+                    for(var it=held.entrySet().iterator();it.hasNext();){var e=it.next();if(e.getKey().startsWith(lane+"-")){for(Extracted n:e.getValue())extracted.add(new Extracted(n.start(),event.tick(),n.pitch(),n.velocity(),n.voice()));it.remove();}}
+                }
+                pedal.put(lane,down);
+            }else if(cmd==ShortMessage.NOTE_ON&&m.getData2()>0){active.computeIfAbsent(key,k->new ArrayDeque<>()).addLast(new NoteOn(event.tick(),m.getData2()));}
+            else if(cmd==ShortMessage.NOTE_OFF||(cmd==ShortMessage.NOTE_ON&&m.getData2()==0)){
+                Deque<NoteOn> starts=active.get(key);if(starts==null||starts.isEmpty())throw new IllegalArgumentException("MIDI_UNMATCHED_OFF");
+                NoteOn start=starts.removeFirst();if(event.tick()<=start.tick())throw new IllegalArgumentException("MIDI_ZERO_LENGTH_NOTE");
+                Extracted note=new Extracted(start.tick(),event.tick(),pitch,start.velocity(),"midi-"+lane+"-"+pitch);
+                if(pedal.getOrDefault(lane,false))held.computeIfAbsent(key,k->new ArrayList<>()).add(note);else extracted.add(note);
+            }
+        }
+        if(active.values().stream().anyMatch(q->!q.isEmpty())||!held.isEmpty()||extracted.isEmpty())throw new IllegalArgumentException("MIDI_UNMATCHED_NOTES");
+        List<Composition.Note> notes=new ArrayList<>();for(Extracted n:extracted){double start=toSeconds.applyAsDouble(n.start()),end=toSeconds.applyAsDouble(n.end());if(end>seconds+1e-6)throw new IllegalArgumentException("MIDI_EXCEEDS_REQUESTED_DURATION");notes.add(new Composition.Note(n.voice(),n.pitch(),start,end-start,n.velocity()));}
+        notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparingInt(Composition.Note::pitch));
+        TreeSet<Double> cuts=new TreeSet<>();cuts.add(0.0);cuts.add((double)seconds);for(Composition.Note n:notes){cuts.add(n.start());cuts.add(n.start()+n.duration());}
+        List<Double> times=new ArrayList<>(cuts);List<Composition.Chord> chords=new ArrayList<>();
+        for(int i=0;i+1<times.size();i++){double start=times.get(i),len=times.get(i+1)-start;if(len<1e-8)continue;double mid=start+len/2;
+            int[] pitches=notes.stream().filter(n->n.start()<=mid&&n.start()+n.duration()>mid).mapToInt(Composition.Note::pitch).toArray();
+            chords.add(new Composition.Chord(start,len,pitches.length==0?"Rest":"Voicing",pitches,null));
+        }
+        Composition c=new Composition(seed,"Licensed MIDI "+midi.getFileName(),"flow",theme,rights,"unknown","imported",timeline.get(0).bpm(),seconds,chords,notes,timeline);
+        return c;
     }
 }
