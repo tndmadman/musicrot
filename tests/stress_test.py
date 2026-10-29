@@ -11,7 +11,9 @@ for i in range(20):
     t=time.perf_counter()
     cmd=['java','-Djava.awt.headless=true','-cp','build','chordflow.Main','render','--seed',str(seed),'--seconds','2','--mode',mode,'--theme',theme,'--width','240','--height','426','--fps','30','--encoder','x264','--out',str(output)]
     p=subprocess.run(cmd,cwd=root,capture_output=True,text=True,timeout=90)
-    v=output/f'chordflow-{seed}-{mode}-240.mp4'
+    matches=list(output.glob(f'chordflow-{seed}-{mode}-240-*.mp4'))
+    assert len(matches)==1, f'Expected one output for {seed}, got {len(matches)}'
+    v=matches[0]
     success=p.returncode==0 and v.exists()
     if success:
         info=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_name,codec_type:format=duration','-of','json',str(v)],capture_output=True,text=True)
@@ -23,7 +25,7 @@ for i in range(20):
     if not success: break
 # Failure injection must not leave any READY output.
 bad=subprocess.run(['java','-Djava.awt.headless=true','-cp','build','chordflow.Main','render','--seed','987654','--seconds','2','--mode','flow','--width','241','--height','426','--out',str(output)],cwd=root,capture_output=True,text=True)
-failure_rejected=bad.returncode!=0 and not (output/'chordflow-987654-flow-241.mp4').exists()
+failure_rejected=bad.returncode!=0 and not list(output.glob('chordflow-987654-flow-241-*.mp4'))
 report={'jobs':summary,'ready':sum(x['status']=='READY' for x in summary),'expected':20,'failure_injection_rejected':failure_rejected,'elapsed_seconds':round(time.perf_counter()-begin,2),'hardware':'CI/container CPU; not Windows/RTX 3090'}
 (root/'stress-report.json').write_text(json.dumps(report,indent=2))
 print(json.dumps({k:v for k,v in report.items() if k!='jobs'},indent=2))

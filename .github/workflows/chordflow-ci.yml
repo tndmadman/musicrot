@@ -16,7 +16,7 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: bash scripts/build.sh
       - run: java -Djava.awt.headless=true -cp build chordflow.Main render --seed 44 --seconds 2 --mode guitar --width 240 --height 426 --encoder x264 --out output
-      - run: ffprobe -v error -show_entries stream=codec_name,codec_type,width,height -of json output/chordflow-44-guitar-240.mp4
+      - run: ffprobe -v error -show_entries stream=codec_name,codec_type,width,height -of json "$(find output -maxdepth 1 -name 'chordflow-44-guitar-240-*.mp4' -print -quit)"
   java-windows:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -38,5 +38,5 @@ jobs:
         run: |
           java '-Djava.awt.headless=true' -cp build chordflow.Main render --seed 45 --seconds 2 --mode flow --width 240 --height 426 --encoder x264 --out output
           if ($LASTEXITCODE -ne 0) { throw 'Render failed' }
-          ffprobe -v error -show_entries stream=codec_name,codec_type,width,height -of json output/chordflow-45-flow-240.mp4
+          ffprobe -v error -show_entries stream=codec_name,codec_type,width,height -of json (Get-ChildItem output -Filter 'chordflow-45-flow-240-*.mp4' | Select-Object -First 1).FullName
           if ($LASTEXITCODE -ne 0) { throw 'Media audit failed' }
