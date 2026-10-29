@@ -70,12 +70,8 @@ public final class Visual {
         for(int s=0;s<6;s++)g.draw(new Line2D.Double(x+s*dx,y,x+s*dx,y+4*dy));
         for(int f=0;f<5;f++)g.draw(new Line2D.Double(x,y+f*dy,x+5*dx,y+f*dy));
         if(base==1){g.setColor(new Color(181,194,226));g.setStroke(new BasicStroke((float)(4*scale)));g.draw(new Line2D.Double(x,y,x+5*dx,y));}
-        // F and Bb shapes have actual first-fret barre across physically covered strings.
-        if(chord.symbol().equals("F")||chord.symbol().equals("Bb")){
-            int start=chord.symbol().equals("Bb")?1:0;
-            g.setColor(new Color(221,228,244,220));g.setStroke(new BasicStroke((float)(17*scale),BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));
-            g.draw(new Line2D.Double(x+start*dx,y+.5*dy,x+5*dx,y+.5*dy));
-        }
+        // Do not fabricate a barre from a chord name. A barre is a finger assignment,
+        // not merely a collection of fretted pitches; draw the exact verified dots.
         for(int s=0;s<6;s++){
             int fret=frets[s];double sx=x+s*dx;
             if(fret==0){g.setColor(new Color(225,236,255));g.setStroke(new BasicStroke((float)(2*scale)));g.draw(new Ellipse2D.Double(sx-5*scale,y-21*scale,10*scale,10*scale));}
