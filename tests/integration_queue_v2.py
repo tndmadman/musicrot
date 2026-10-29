@@ -23,7 +23,18 @@ with tempfile.TemporaryDirectory() as d:
         assert req('/api/resume',True)=='OK'
         assert req('/api/drain',True)=='OK';assert req('/api/claim?worker=test-worker',True)=='NONE'
         assert req('/api/resume',True)=='OK'
-        print('PASS queue settings/claim/token/retry/pause/drain')
+        # Cancel the claimed job: revoked token cannot heartbeat or finalize READY.
+        assert req('/api/claim?worker=test-worker',True).split('|')[0]==id
+        current=json.loads(req('/api/jobs'))['jobs'][0]
+        assert current['state']=='RUNNING'
+        assert req('/api/cancel?'+q(dict(id=id)),True)=='CANCELLED'
+        assert req('/api/heartbeat?'+q(dict(id=id,worker='test-worker',token=token)),True)=='REJECTED'
+        assert req('/api/finish?'+q(dict(id=id,worker='test-worker',token=token,filename='faked.mp4',sha='bad')),True)=='STALE_LEASE'
+        assert req('/api/cancel?'+q(dict(id=id)),True)=='CANCELLED'
+        assert req('/api/retry?'+q(dict(id=id)),True)=='NOT_FAILED'
+        print('PASS queue settings/claim/token/retry/pause/drain/cancellation')
+        # A fresh job can still be claimed and completed after cancellation.
+        assert req('/api/enqueue?count=1&seed=803&seconds=2&mode=flow&theme=gold&width=720&height=1280&encoder=x264&instrument=soft-keys',True)
         worker=subprocess.Popen(['java','-Djava.awt.headless=true','-cp',str(root/'build'),'chordflow.Main','worker','--url','http://127.0.0.1:18991','--id','worker-2','--out',str(pathlib.Path(d)/'output')],cwd=root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         try:
             deadline=time.time()+65
