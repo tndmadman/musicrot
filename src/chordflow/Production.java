@@ -66,9 +66,9 @@ public final class Production {
         Matcher m=Pattern.compile("\\\"duration\\\"\\s*:\\s*\\\"([0-9.]+)\\\"").matcher(info);if(!m.find()||Math.abs(Double.parseDouble(m.group(1))-expected)>.20)throw new IOException("VIDEO_DURATION_QA_FAILED: "+info);
         Matcher f=Pattern.compile("\\\"nb_frames\\\"\\s*:\\s*\\\"(\\d+)\\\"").matcher(info);if(f.find()&&Math.abs(Integer.parseInt(f.group(1))-Math.round(expected*fps))>1)throw new IOException("VIDEO_FRAME_COUNT_QA_FAILED");
         // Independently decode and inspect the delivered AAC, not merely the input WAV.
-        Process audioProbe=new ProcessBuilder("ffmpeg","-hide_banner","-nostats","-i",video.toString(),"-map","0:a:0","-af","ebur128=peak=true","-f","null","-").start();
-        audioProbe.getInputStream().transferTo(OutputStream.nullOutputStream());
-        String loudness=new String(audioProbe.getErrorStream().readAllBytes());
+        Process audioProbe=new ProcessBuilder("ffmpeg","-hide_banner","-nostats","-i",video.toString(),"-map","0:a:0","-af","ebur128=peak=true","-f","null","-").redirectErrorStream(true).start();
+        // Drain merged output while the child runs; separate stderr/stdout reading can deadlock on long videos.
+        String loudness=new String(audioProbe.getInputStream().readAllBytes());
         if(audioProbe.waitFor()!=0)throw new IOException("AUDIO_LOUDNESS_PROBE_FAILED");
         int summary=loudness.lastIndexOf("Summary:");if(summary<0)throw new IOException("AAC_LOUDNESS_MISSING");
         String measurements=loudness.substring(summary);

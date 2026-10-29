@@ -4,7 +4,7 @@ previews; it is not a substitute for Windows 1080x1920 NVENC hardware benchmarki
 """
 import json, subprocess, time, pathlib, sys, tempfile, shutil, hashlib
 root=pathlib.Path(__file__).resolve().parents[1]
-output=root/'stress-output';output.mkdir(exist_ok=True)
+output=pathlib.Path(tempfile.mkdtemp(prefix='cf-stress-',dir=root))
 summary=[];begin=time.perf_counter()
 for i in range(20):
     mode='guitar' if i%2 else 'flow';theme=['gold','blue','violet'][i%3];seed=35000+i
@@ -29,4 +29,5 @@ failure_rejected=bad.returncode!=0 and not list(output.glob('chordflow-987654-fl
 report={'jobs':summary,'ready':sum(x['status']=='READY' for x in summary),'expected':20,'failure_injection_rejected':failure_rejected,'elapsed_seconds':round(time.perf_counter()-begin,2),'hardware':'CI/container CPU; not Windows/RTX 3090'}
 (root/'stress-report.json').write_text(json.dumps(report,indent=2))
 print(json.dumps({k:v for k,v in report.items() if k!='jobs'},indent=2))
+shutil.rmtree(output)
 sys.exit(0 if report['ready']==20 and failure_rejected else 1)
