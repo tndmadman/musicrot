@@ -68,6 +68,6 @@ The 17 Java checks exercise deterministic seed output, seed variation, chord/not
 
 Detailed measured container test results and release limitations: [docs/TEST_REPORT.md](docs/TEST_REPORT.md). GitHub Actions workflow tests Linux and Windows x264 smoke builds after pushes/PRs; consult the actual workflow results before claiming Windows compatibility.
 
-## Version 2 development additions
+## Windows hardware acceptance (operator-run)
 
-The active feature branch now includes tempo-map MIDI import/export (including multi-track notes, pedal sustain and rests), note-event-accurate paths, five selectable locally synthesized instrument timbres (`warm-pad`, `soft-keys`, `nylon-pluck`, `glass`, `layered`), AAC loudness/true-peak audit, unique output names, lease-token fencing, and 720p/1080p queue profiles. Previous limitations sections reflect the initial v1 prototype; use the latest test and release report for current capabilities. CI success is not a replacement for full 1080p/RTX 3090 production certification.
+After installing JDK 21 and FFmpeg/ffprobe, run `powershell -ExecutionPolicy Bypass -File scripts/hardware-acceptance.ps1` from the repository root. It runs 33 self-tests and two independent 60s 1080x1920 original renders, records actual wall-clock durations, codec probes and SHA-256 manifests. Use `-SkipFullRender` for a 10-second 720p preflight only. This is an operator-driven acceptance command: **no RTX 3090 or full 20-job 1080p batch has been certified remotely**, and the script never uploads media.
