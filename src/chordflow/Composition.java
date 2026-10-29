@@ -102,6 +102,20 @@ public final class Composition {
         for(int i=0;i<chords.size();i++){Chord c=chords.get(i);if(i>0)b.append(',');b.append("{\"startSeconds\":").append(c.start()).append(",\"durationSeconds\":").append(c.duration()).append(",\"symbol\":").append(q(c.symbol())).append(",\"midiPitches\":").append(Arrays.toString(c.pitches())).append(",\"frets\":").append(c.frets()==null?"null":Arrays.toString(c.frets())).append('}');}
         b.append("],\"noteEvents\":[");for(int i=0;i<notes.size();i++){Note n=notes.get(i);if(i>0)b.append(',');b.append("{\"voiceId\":").append(q(n.voice())).append(",\"midiPitch\":").append(n.pitch()).append(",\"startSeconds\":").append(n.start()).append(",\"durationSeconds\":").append(n.duration()).append(",\"velocity\":").append(n.velocity()).append('}');}b.append("],\"tempoMap\":[");for(int i=0;i<tempoMap.size();i++){Tempo t=tempoMap.get(i);if(i>0)b.append(',');b.append("{\"beat\":").append(t.beat()).append(",\"bpm\":").append(t.bpm()).append('}');}return b.append("]}\n").toString();
     }
-    private static String q(String s){return "\""+s.replace("\\","\\\\").replace("\"","\\\"").replace("\n"," ")+"\"";}
+    private static String q(String s){
+        StringBuilder b=new StringBuilder("\"");
+        for(int i=0;i<s.length();i++){
+            char ch=s.charAt(i);
+            switch(ch){
+                case '"'->b.append("\\\"");
+                case '\\'->b.append("\\\\");
+                case '\n'->b.append("\\n");
+                case '\r'->b.append("\\r");
+                case '\t'->b.append("\\t");
+                default->{if(ch<32)b.append(String.format("\\u%04x",(int)ch));else b.append(ch);}
+            }
+        }
+        return b.append('"').toString();
+    }
     public void save(Path path)throws IOException{Files.createDirectories(path.toAbsolutePath().getParent());Files.writeString(path,json());}
 }
