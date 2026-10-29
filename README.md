@@ -74,3 +74,32 @@ After installing JDK 21 and FFmpeg/ffprobe, run `powershell -ExecutionPolicy Byp
 ### Conservative exact-guitar solver
 
 `import-midi-render --input owned.mid --rights "Owned by author" --mode guitar` now searches standard-tuning fretboard fingerings matching each **exact MIDI pitch and octave**. Restricts frets to 0–12, fret span to four, and four distinct fretted positions; omitted diagrams are logged as `GUITAR_CHARTS_OMITTED_UNPLAYABLE` while the audio/notes remain unchanged. This is a conservative mathematical solver, not universal human-playability certification. For atypical chords use flow mode or manually review the output. Encoded AAC uses `loudnorm` targeting -15 LUFS, -2.5 dBTP, followed by independent decoded AAC audit.
+
+
+## Development additions: saved-composition replay and cancellation
+
+The canonical schema-v2 composition JSON can now be reloaded without silently
+regenerating notes from its seed. The parser rejects missing fields, malformed
+or duplicate JSON keys, unsupported schema versions, excessive input sizes
+and invalid MIDI/chord/fret events. The JSON writer escapes controls and quotes.
+
+```powershell
+.\scripts\build.ps1
+java -cp build chordflow.Main compose --seed 123 --seconds 60 --mode flow --out saved.composition.json
+java -cp build chordflow.Main render-json --input saved.composition.json --width 1080 --height 1920 --encoder auto --out output
+```
+
+The local controller supports `POST /api/cancel?id=<job-id>` for QUEUED or
+RUNNING jobs. Cancellation revokes the lease, so stale workers cannot mark
+canceled jobs READY. Heartbeats request interruption when revoked; active
+FFmpeg renders should stop, but distributed crash recovery and orphan-output
+garbage collection remain future work. The dashboard provides Cancel actions.
+
+The guitar renderer only draws exact fret markers: hard-coded chord-name-based
+barre indications were removed because fret coordinates alone do not prove
+finger assignment.
+
+Local verification added schema-roundtrip/corruption regression tests and
+queue cancellation/fencing tests. The output tests and hosted CI are not
+substitutes for full 1080p 20-job Windows/RTX3090 acceptance.
+
