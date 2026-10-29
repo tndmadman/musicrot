@@ -35,6 +35,16 @@ public final class SelfTest {
         Path tmp=Files.createTempDirectory("chordflow-test-");try{
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());check(seq.getTracks()[0].size()>a.notes.size(),"valid-midi-export");
             Composition imported=Music.importMidi(midi,"Licensed by creator",192,10,"gold");check(imported.notes.size()==a.notes.size(),"authorized-midi-import-roundtrip");
+            Path compositionPath=tmp.resolve("saved.composition.json");a.save(compositionPath);
+            Composition loaded=CompositionIO.read(compositionPath);
+            check(a.json().equals(loaded.json()),"saved-json-roundtrip-identical");
+            boolean malformedRejected=false;
+            Path malformed=tmp.resolve("malformed.json");Files.writeString(malformed,a.json().replace("\"schemaVersion\":2", "\"schemaVersion\":99"));
+            try{CompositionIO.read(malformed);}catch(java.io.IOException expected){malformedRejected=true;}
+            check(malformedRejected,"unknown-composition-schema-rejected");
+            malformedRejected=false;Files.writeString(malformed,a.json()+" garbage");
+            try{CompositionIO.read(malformed);}catch(java.io.IOException expected){malformedRejected=true;}
+            check(malformedRejected,"composition-trailing-data-rejected");
             Audio.Stats stats=Audio.synth(a,wav);check(stats.rms()>.007&&stats.peak()<.98,"nonsilent-true-synthesis");check(Files.size(wav)>1_000_000,"wav-real-pcm");
             Set<String> instrumentHashes=new HashSet<>();
             for(String preset:Composition.PRESETS){
