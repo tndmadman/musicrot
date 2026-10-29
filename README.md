@@ -54,13 +54,15 @@ The MP4 remains in a temporary directory until audio synthesis, FFmpeg encode, f
 python tests\stress_test.py
 ```
 
-Tests exercise deterministic seed output, seed variation, chord/note validation, 200 generated compositions, exact fretboard pitch matching, invalid MIDI rejection, standard MIDI file writing, non-silent 48kHz synthesis, raster drawing, provenance hashing and 20 full 2s MP4 QA render jobs. Queue HTTP integration should additionally be performed after starting controller and worker; `stress_test.py` is a **preview-resolution** test, not a GPU hardware stress test.
+The 17 Java checks exercise deterministic seed output, seed variation, chord/note validation, 200 generated compositions, exact fretboard pitch matching, invalid MIDI rejection, standard MIDI file writing, non-silent 48kHz synthesis, raster drawing, provenance hashing and 20 full 2s MP4 QA render jobs. Queue HTTP integration should additionally be performed after starting controller and worker; `stress_test.py` is a **preview-resolution** test, not a GPU hardware stress test.
 
 ## Rights and limits
 
 - All built-in melodies/progressions are procedurally generated from original patterns. No music/audio, creator name, artwork, image assets or copyrighted recording was extracted from the references.
 - MIDI import requires an explicit ownership/license statement. Only constant-tempo PPQ MIDI with balanced note-on/off events is supported. Tempo changes are deliberately rejected rather than guessed; imported JSON may have generic unclassified chord symbols and needs more chord analysis before graphical publishing.
-- Guitar mode uses a curated set of authentic six-string chord shapes, currently based around C-major-family progressions. Barre detection/drawing, arbitrary user-specified inversions and solver coverage for all voicings are **not yet complete**. Do not claim guitar mode matches arbitrary imported MIDI chords.
+- Guitar mode uses a curated set of authentic six-string chord shapes, currently based around C-major-family progressions. Known F and Bb barre shapes and C/E, F/A, G/B, C/G inversion diagrams are supported; arbitrary user-specified inversions and solver coverage for all voicings are **not yet complete**. Do not claim guitar mode matches arbitrary imported MIDI chords.
 - The native 2D renderer deliberately resembles the *genre* of flowing harmony charts without reproducing the reference creator's distinctive wording, music or identity. It does not use image-generation models.
 - Current audio presets are limited: mode/theme affect arrangement and appearance; themes alone do not imply a different instrument. No LUFS-based mastering or true-peak oversampling yet.
 - CI/Linux rendering here does **not** prove RTX 3090 NVENC, Windows 10/11 compatibility, exact sub-frame acoustic onset sync, third-party soundfont/VST compliance, sustained 100-job unattended production, hard-disk exhaustion, or arbitrary licensed MIDI correctness. Those require direct on-device testing.
+
+Detailed measured container test results and release limitations: [docs/TEST_REPORT.md](docs/TEST_REPORT.md). GitHub Actions workflow tests Linux and Windows x264 smoke builds after pushes/PRs; consult the actual workflow results before claiming Windows compatibility.

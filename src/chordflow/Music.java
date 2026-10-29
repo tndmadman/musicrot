@@ -15,14 +15,14 @@ public final class Music {
         {-1,3,2,0,1,0}, {-1,0,2,2,1,0}, {3,2,0,0,0,3}, {-1,-1,0,2,3,2},
         {-1,3,2,0,0,0},{-1,0,2,2,2,0},{3,2,0,0,0,1}, {1,3,3,2,1,1},
         {-1,-1,0,2,3,1},{-1,1,3,3,3,1},{-1,-1,0,2,1,1},{0,2,2,1,0,0},
-        {0,2,2,0,0,0},{-1,0,2,0,1,0},{3,2,0,0,0,1},{-1,3,2,0,1,3}
+        {0,2,2,0,0,0},{-1,0,2,0,1,0},{3,2,0,0,0,1},{-1,3,2,0,1,3}, {0,3,2,0,1,0}, {-1,0,3,2,1,1}, {-1,2,0,0,0,3}, {3,3,2,0,1,0}
     };
-    private static final String[] GUITAR_NAMES={"C","Am","G","D","Cmaj7","A","G7","F","Dm","Bb","Dm7","E","Em","Am7","G7","Cadd9"};
+    private static final String[] GUITAR_NAMES={"C","Am","G","D","Cmaj7","A","G7","F","Dm","Bb","Dm7","E","Em","Am7","G7","Cadd9","C/E","F/A","G/B","C/G"};
     public static Composition generate(long seed,int seconds,String mode,String theme){
         if(seconds<2||seconds>180)throw new IllegalArgumentException("DURATION_OUT_OF_RANGE");
         Random r=new Random(seed);double bpm=72+r.nextInt(35), bar=240.0/bpm;
         List<Composition.Chord> chords=new ArrayList<>(); List<Composition.Note> notes=new ArrayList<>();
-        int[] previous=null;int position=r.nextInt(12),step=0;int phrase=r.nextInt(6);int[] scale={0,2,4,5,7,9,11};int[][] degrees={{0,5,3,4,1,4,0,0},{0,3,4,0,5,1,4,0},{5,3,0,4,5,3,4,0},{0,1,4,5,3,4,0,0},{0,3,1,4,5,1,4,0},{0,5,1,4,3,1,4,0}};int[][] guitarProgressions={{0,1,7,2},{0,7,2,0},{1,7,0,2},{8,2,0,1},{0,4,7,6},{0,1,4,2},{0,15,7,2}};
+        int[] previous=null;int position=r.nextInt(12),step=0;int phrase=r.nextInt(mode.equals("guitar")?8:6);int[] scale={0,2,4,5,7,9,11};int[][] degrees={{0,5,3,4,1,4,0,0},{0,3,4,0,5,1,4,0},{5,3,0,4,5,3,4,0},{0,1,4,5,3,4,0,0},{0,3,1,4,5,1,4,0},{0,5,1,4,3,1,4,0}};int[][] guitarProgressions={{0,1,7,2},{0,7,2,0},{1,7,0,2},{8,2,0,1},{0,4,7,6},{0,1,4,2},{0,15,7,2},{16,17,18,19}};
         for(double start=0;start<seconds-0.01;start+=bar){double len=Math.min(bar,seconds-start);int[] pitches;int[] frets=null;String name;
             if(mode.equals("guitar")){
                 // Guitar notes are *exactly* the six-string fingering, including octave duplicates.
