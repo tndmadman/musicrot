@@ -24,6 +24,13 @@ public final class SelfTest {
             List.of(new Composition.Note("a",60,0,2,80),new Composition.Note("b",64,1,1,80))),"mid-chord-notes-rejected");
         int[] mutablePitches={60};Composition.Chord immutable=new Composition.Chord(0,1,"C",mutablePitches,null);
         mutablePitches[0]=70;immutable.pitches()[0]=80;check(immutable.pitches()[0]==60,"chord-arrays-defensive");
+        int[] solvedF=GuitarSolver.solve(new int[]{41,48,53,57,60,65}).orElseThrow();
+        check(solvedF.length==6&&Arrays.equals(solvedF,new int[]{1,3,3,2,1,1}),"exact-solved-barre-F-chord");
+        check(GuitarSolver.solve(new int[]{60,64,67}).isPresent(),"arbitrary-exact-triad-solved");
+        check(GuitarSolver.solve(new int[]{28,40}).isEmpty(),"impossible-bass-fails-closed");
+        check(GuitarSolver.solve(new int[]{60,61,62,63,64,65,66}).isEmpty(),"too-many-guitar-voices-rejected");
+        Composition guitarized=GuitarSolver.withDiagrams(a);
+        check(guitarized.mode.equals("guitar")&&guitarized.notes.equals(a.notes),"import-guitar-note-truth-retained");
         check(a.json().contains("\"schemaVersion\":2")&&a.json().contains("\"tempoMap\""),"versioned-tempo-schema");
         Path tmp=Files.createTempDirectory("chordflow-test-");try{
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());check(seq.getTracks()[0].size()>a.notes.size(),"valid-midi-export");

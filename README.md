@@ -71,3 +71,6 @@ Detailed measured container test results and release limitations: [docs/TEST_REP
 ## Windows hardware acceptance (operator-run)
 
 After installing JDK 21 and FFmpeg/ffprobe, run `powershell -ExecutionPolicy Bypass -File scripts/hardware-acceptance.ps1` from the repository root. It runs 33 self-tests and two independent 60s 1080x1920 original renders, records actual wall-clock durations, codec probes and SHA-256 manifests. Use `-SkipFullRender` for a 10-second 720p preflight only. This is an operator-driven acceptance command: **no RTX 3090 or full 20-job 1080p batch has been certified remotely**, and the script never uploads media.
+### Conservative exact-guitar solver
+
+`import-midi-render --input owned.mid --rights "Owned by author" --mode guitar` now searches standard-tuning fretboard fingerings matching each **exact MIDI pitch and octave**. Restricts frets to 0–12, fret span to four, and four distinct fretted positions; omitted diagrams are logged as `GUITAR_CHARTS_OMITTED_UNPLAYABLE` while the audio/notes remain unchanged. This is a conservative mathematical solver, not universal human-playability certification. For atypical chords use flow mode or manually review the output. Encoded AAC uses `loudnorm` targeting -15 LUFS, -2.5 dBTP, followed by independent decoded AAC audit.
