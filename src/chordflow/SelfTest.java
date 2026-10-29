@@ -45,6 +45,12 @@ public final class SelfTest {
             malformedRejected=false;Files.writeString(malformed,a.json()+" garbage");
             try{CompositionIO.read(malformed);}catch(java.io.IOException expected){malformedRejected=true;}
             check(malformedRejected,"composition-trailing-data-rejected");
+            malformedRejected=false;Files.writeString(malformed,a.json().replace("\"frets\":null", "\"frets\":null,\"frets\":null"));
+            try{CompositionIO.read(malformed);}catch(java.io.IOException expected){malformedRejected=true;}
+            check(malformedRejected,"duplicate-null-key-rejected");
+            Composition escaped=new Composition(a.seed,"Title \"quoted\"",a.mode,a.theme,"Creator \n rights",a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,a.tempoMap,a.instrumentPreset);
+            escaped.save(tmp.resolve("escaped.json"));
+            check(escaped.json().equals(CompositionIO.read(tmp.resolve("escaped.json")).json()),"json-escape-roundtrip");
             Audio.Stats stats=Audio.synth(a,wav);check(stats.rms()>.007&&stats.peak()<.98,"nonsilent-true-synthesis");check(Files.size(wav)>1_000_000,"wav-real-pcm");
             Set<String> instrumentHashes=new HashSet<>();
             for(String preset:Composition.PRESETS){
