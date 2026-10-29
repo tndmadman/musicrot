@@ -48,11 +48,25 @@ public final class QueueServer {
     private String json()throws IOException{StringBuilder b=new StringBuilder("{\"paused\":"+paused+",\"draining\":"+draining+",\"jobs\":[");boolean first=true;for(Job j:all()){if(!first)b.append(',');first=false;Properties p=j.p;b.append("{\"id\":\"").append(j.id).append("\",\"state\":\"").append(clean(p.getProperty("state"))).append("\",\"seed\":").append(p.getProperty("seed")).append(",\"mode\":\"").append(clean(p.getProperty("mode"))).append("\",\"attempts\":").append(p.getProperty("attempts")).append(",\"output\":\"").append(clean(p.getProperty("output",""))).append("\",\"error\":\"").append(clean(p.getProperty("error",""))).append("\"}");}return b.append("]}").toString();}
     private static String clean(String s){return s.replace("\\","/").replace("\"","'").replace("\n"," ").replace("\r"," ");}
     private static Map<String,String> query(String url){Map<String,String> m=new HashMap<>();int index=url.indexOf('?');if(index<0)return m;for(String pair:url.substring(index+1).split("&")){String[] kv=pair.split("=",2);if(kv.length==2)m.put(URLDecoder.decode(kv[0],StandardCharsets.UTF_8),URLDecoder.decode(kv[1],StandardCharsets.UTF_8));}return m;}
+    private void media(HttpExchange x,String filename)throws Exception{
+        if(!x.getRequestMethod().equals("GET")||!filename.matches("chordflow-[a-zA-Z0-9-]{1,100}\\.mp4"))throw new IOException("BAD_PREVIEW_REQUEST");
+        boolean approved=false;String expectedHash=null;
+        for(Job j:all())if(j.p.getProperty("state").equals("READY")&&filename.equals(j.p.getProperty("output"))){approved=true;expectedHash=j.p.getProperty("sha256");break;}
+        if(!approved)throw new IOException("PREVIEW_NOT_READY");
+        Path file=root.resolve("output").resolve(filename);if(!Files.isRegularFile(file)||!Production.hash(file).equals(expectedHash))throw new IOException("PREVIEW_HASH_MISMATCH");
+        long size=Files.size(file),start=0,end=size-1;String range=x.getRequestHeaders().getFirst("Range");
+        if(range!=null){java.util.regex.Matcher m=java.util.regex.Pattern.compile("bytes=(\\d+)-(\\d*)").matcher(range);if(!m.matches())throw new IOException("BAD_VIDEO_RANGE");start=Long.parseLong(m.group(1));if(!m.group(2).isEmpty())end=Math.min(end,Long.parseLong(m.group(2)));if(start>=size||end<start)throw new IOException("INVALID_VIDEO_RANGE");}
+        x.getResponseHeaders().set("Content-Type","video/mp4");x.getResponseHeaders().set("Accept-Ranges","bytes");
+        int code=range==null?200:206;if(code==206)x.getResponseHeaders().set("Content-Range","bytes "+start+"-"+end+"/"+size);
+        x.sendResponseHeaders(code,end-start+1);
+        try(InputStream in=Files.newInputStream(file);OutputStream out=x.getResponseBody()){in.skipNBytes(start);byte[] buffer=new byte[64*1024];long remaining=end-start+1;while(remaining>0){int n=in.read(buffer,0,(int)Math.min(buffer.length,remaining));if(n<0)throw new EOFException("MEDIA_TRUNCATED");out.write(buffer,0,n);remaining-=n;}}
+    }
     private static String arg(Map<String,String> q,String key,String def){return q.getOrDefault(key,def);}
     private static void reply(HttpExchange x,int code,String body)throws IOException{byte[] bytes=body.getBytes(StandardCharsets.UTF_8);x.getResponseHeaders().set("Content-Type",body.startsWith("<")?"text/html; charset=utf-8":"application/json; charset=utf-8");x.sendResponseHeaders(code,bytes.length);try(OutputStream out=x.getResponseBody()){out.write(bytes);}}
     public static void serve(int port,Path root)throws Exception{
         QueueServer store=new QueueServer(root);HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",port),0);
         server.createContext("/",x->{try{String path=x.getRequestURI().getPath();Map<String,String> q=query(x.getRequestURI().toString());String response;
+            if(path.startsWith("/api/media/")){store.media(x,path.substring("/api/media/".length()));return;}
             switch(path){
                 case "/"->response=HTML;
                 case "/api/jobs"->response=store.json();
@@ -92,10 +106,12 @@ public final class QueueServer {
         </style></head><body><h1>ChordFlow / Command Center</h1><p class="small">Local-first original harmonic video production · Independent of AutoNewsRoller</p>
         <section>Batch count <input id="count" type="number" min="1" max="100" value="2"> Seed <input id="seed" type="number" value="101"> Seconds <input id="seconds" type="number" min="2" max="180" value="60"><select id="mode"><option>flow</option><option>guitar</option></select><select id="theme"><option>gold</option><option>blue</option><option>violet</option></select><button onclick="enqueue()">Queue batch</button></section>
         <section><button onclick="call('/api/pause')">Pause claims</button><button onclick="call('/api/resume')">Resume</button><button onclick="call('/api/drain')">Drain</button><span id="summary"></span></section>
+        <section id="preview" style="display:none;margin:20px 0"><h2>Output preview</h2><video id="video" controls playsinline style="max-height:640px;max-width:100%"></video></section>
         <table><thead><tr><th>Job</th><th>Seed</th><th>Mode</th><th>State</th><th>Attempts</th><th>Output / error</th><th>Action</th></tr></thead><tbody id="jobs"></tbody></table>
         <script>async function call(url){await fetch(url,{method:'POST'});refresh()}
         async function enqueue(){const p=new URLSearchParams();for(const k of ['count','seed','seconds','mode','theme'])p.set(k,document.getElementById(k).value);await call('/api/enqueue?'+p)}
-        async function refresh(){const data=await(await fetch('/api/jobs')).json();document.getElementById('summary').textContent='  '+(data.paused?'PAUSED':'ACTIVE')+(data.draining?' / DRAINING':'')+' · '+data.jobs.length+' jobs';document.getElementById('jobs').innerHTML=data.jobs.map(j=>`<tr><td>${j.id.substring(0,8)}</td><td>${j.seed}</td><td>${j.mode}</td><td>${j.state}</td><td>${j.attempts}</td><td>${j.output||j.error}</td><td>${j.state==='FAILED'?`<button onclick="call('/api/retry?id=${j.id}')">Retry</button>`:''}</td></tr>`).join('')}
+        async function refresh(){const data=await(await fetch('/api/jobs')).json();document.getElementById('summary').textContent='  '+(data.paused?'PAUSED':'ACTIVE')+(data.draining?' / DRAINING':'')+' · '+data.jobs.length+' jobs';document.getElementById('jobs').innerHTML=data.jobs.map(j=>`<tr><td>${j.id.substring(0,8)}</td><td>${j.seed}</td><td>${j.mode}</td><td>${j.state}</td><td>${j.attempts}</td><td>${j.output?`<a style="color:#93cdff" href="#preview" onclick="preview('${j.output}')">Preview MP4</a>`:j.error}</td><td>${j.state==='FAILED'?`<button onclick="call('/api/retry?id=${j.id}')">Retry</button>`:''}</td></tr>`).join('')}
+        function preview(name){if(!/^chordflow-[a-zA-Z0-9-]+\\.mp4$/.test(name))return;document.getElementById('preview').style.display='block';const player=document.getElementById('video');player.src='/api/media/'+encodeURIComponent(name);player.load();player.play().catch(()=>{})}
         refresh();setInterval(refresh,2500);</script></body></html>
         """;
 }

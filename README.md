@@ -2,7 +2,7 @@
 
 Windows-first, local, original procedural instrumental visualization engine. Not part of AutoNewsRoller. Java 21 + FFmpeg/FFprobe; no ComfyUI, TTS, external song download, copied artist handle, or soundfont required. The audio is synthesized from the canonical timed note events by ChordFlow's own additive-instrument synthesizer.
 
-**Status: functional development build, not production-certification.** Flow and exact six-string guitar modes, deterministic original compositions, MIDI export, licensed MIDI import (restricted subset), persistent local controller/worker queue, reviewable MP4s, audio QA, full MP4 decode audit, SHA-256 manifests, NVENC attempt with x264 fallback, and Windows setup scripts are implemented. Remaining limitations are below.
+**Status: functional development build, not production-certification.** Flow and exact six-string guitar modes, deterministic original compositions, MIDI export, licensed MIDI import (restricted subset), persistent local controller/worker queue, in-dashboard seekable MP4 previews, licensed MIDI-to-video rendering, audio QA, full MP4 decode audit, SHA-256 manifests, NVENC attempt with x264 fallback, and Windows setup scripts are implemented. Remaining limitations are below.
 
 ## Windows 10 / 11 quick start
 
@@ -21,7 +21,7 @@ Windows-first, local, original procedural instrumental visualization engine. Not
 .\scripts\start-worker.ps1
 ```
 
-Output media, `composition.json`, `.mid`, and manifest files are generated in `chordflow-data/output/`. The controller uses `chordflow-data/jobs/` and persistent on-disk job records. It binds to local loopback only and has no cloud or publish integration.
+Completed job rows include seekable video previews; the controller serves only verified READY files with matching SHA-256. Output media, `composition.json`, `.mid`, and manifest files are generated in `chordflow-data/output/`. The controller uses `chordflow-data/jobs/` and persistent on-disk job records. It binds to local loopback only and has no cloud or publish integration.
 
 ### Direct CLI commands
 
@@ -31,6 +31,7 @@ java -Djava.awt.headless=true -cp build chordflow.Main render --seed 101 --secon
 java -Djava.awt.headless=true -cp build chordflow.Main render --seed 102 --seconds 60 --mode guitar --theme blue --width 1080 --height 1920 --encoder auto --out output
 java -Djava.awt.headless=true -cp build chordflow.Main compose --seed 103 --seconds 60 --mode flow --out composition.json
 java -Djava.awt.headless=true -cp build chordflow.Main import-midi --input C:\licensed\song.mid --rights 'User-owned MIDI' --seconds 60 --out imported.composition.json
+java -Djava.awt.headless=true -cp build chordflow.Main import-midi-render --input C:\licensed\song.mid --rights 'User-owned MIDI' --seconds 60 --width 1080 --height 1920 --out output
 ```
 
 On PowerShell, `-Djava.awt.headless=true` is passed as a single argument to `java` (quote it if PowerShell interprets the leading dash). Encoding defaults to `auto`, which tries `h264_nvenc` first, then `libx264` **only if** NVENC cannot produce valid audited output; no silent fallback to missing/blank media. Use `--encoder x264` to require CPU encoding.
