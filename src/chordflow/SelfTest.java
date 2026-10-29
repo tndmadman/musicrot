@@ -29,6 +29,13 @@ public final class SelfTest {
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());check(seq.getTracks()[0].size()>a.notes.size(),"valid-midi-export");
             Composition imported=Music.importMidi(midi,"Licensed by creator",192,10,"gold");check(imported.notes.size()==a.notes.size(),"authorized-midi-import-roundtrip");
             Audio.Stats stats=Audio.synth(a,wav);check(stats.rms()>.007&&stats.peak()<.98,"nonsilent-true-synthesis");check(Files.size(wav)>1_000_000,"wav-real-pcm");
+            Set<String> instrumentHashes=new HashSet<>();
+            for(String preset:Composition.PRESETS){
+                Composition pc=a.withInstrument(preset);
+                check(pc.json().contains("\"instrumentPreset\":\""+preset+"\""),"preset-serialized-"+preset);
+                Path pw=tmp.resolve(preset+".wav");Audio.synth(pc,pw);instrumentHashes.add(Production.hash(pw));
+            }
+            check(instrumentHashes.size()==Composition.PRESETS.size(),"five-distinct-instrument-timbres");
             Visual v=new Visual(a,240,426,30);byte[] frame=v.frame(0).clone();check(frame.length==240*426*3,"full-raster-frame");check(!java.util.Arrays.equals(frame,v.frame(15)),"motion-is-animated");
             check(Production.hash(wav).length()==64,"sha256-provenance");
             // Independent multi-track, multi-tempo, sustain-pedal MIDI fixture.

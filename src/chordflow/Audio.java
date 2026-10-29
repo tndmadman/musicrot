@@ -16,12 +16,21 @@ public final class Audio {
             double pan=n.voice().equals("voice-0")?-0.24:Math.max(-0.7,Math.min(0.7,(n.pitch()-63)/33.));
             double lGain=Math.sqrt((1-pan)/2),rGain=Math.sqrt((1+pan)/2),gain=0.18*n.velocity()/127.0;
             // Gentle additive pad/keys: fundamental, fifth harmonic fractions, slow ensemble vibrato and envelope.
-            double phase=0,step=2*Math.PI*freq/RATE;double attack=c.mode.equals("guitar")?0.022:0.075;
+            double phase=0,step=2*Math.PI*freq/RATE;String preset=c.instrumentPreset;
+            double attack=switch(preset){case "nylon-pluck","soft-keys"->0.010;case "glass"->0.018;default->0.075;};
             for(int s=start;s<end;s++){
                 double elapsed=(s-start)/(double)RATE,remaining=(end-s)/(double)RATE;
                 double env=Math.min(1,elapsed/attack)*Math.min(1,remaining/0.17);
                 double swell=0.75+0.25*Math.sin(Math.PI*Math.min(1,elapsed/Math.max(.01,n.duration())));
-                double signal=(Math.sin(phase)+0.24*Math.sin(2*phase+0.04)+0.13*Math.sin(3*phase)+0.045*Math.sin(5*phase))*env*swell*gain;
+                double tail=switch(preset){case "nylon-pluck"->Math.exp(-2.9*elapsed);case "soft-keys"->.43+.57*Math.exp(-1.3*elapsed);case "glass"->.56+.44*Math.exp(-.7*elapsed);case "layered"->.6+.4*Math.exp(-2*elapsed);default->1;};
+                double tone=switch(preset){
+                    case "soft-keys"->Math.sin(phase)+.37*Math.sin(2*phase)+.2*Math.sin(3*phase)+.08*Math.sin(4*phase);
+                    case "nylon-pluck"->Math.sin(phase)+.48*Math.sin(2*phase)+.17*Math.sin(3*phase)+.08*Math.sin(5*phase);
+                    case "glass"->Math.sin(phase+.55*Math.sin(2.003*phase))+.1*Math.sin(4*phase);
+                    case "layered"->Math.sin(phase)+.22*Math.sin(2*phase)+.13*Math.sin(3*phase)+.18*Math.sin(phase*1.003);
+                    default->Math.sin(phase)+0.24*Math.sin(2*phase+0.04)+0.13*Math.sin(3*phase)+0.045*Math.sin(5*phase);
+                };
+                double signal=tone*env*swell*tail*gain;
                 left[s]+=(float)(signal*lGain);right[s]+=(float)(signal*rGain);
                 phase+=step*(1+0.0007*Math.sin(2*Math.PI*5.1*elapsed));
                 if(phase>2*Math.PI)phase-=2*Math.PI;

@@ -11,7 +11,13 @@ import java.util.List;
 public final class Visual {
     private final Composition c;private final int w,h,fps;private final BufferedImage img;private final Graphics2D g;
     private final Color[] palette;
-    public Visual(Composition c,int w,int h,int fps){this.c=c;this.w=w;this.h=h;this.fps=fps;this.img=new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);this.g=img.createGraphics();g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+    private final Map<String,List<Composition.Note>> voiceGroups;
+    public Visual(Composition c,int w,int h,int fps){this.c=c;this.w=w;this.h=h;this.fps=fps;
+        Map<String,List<Composition.Note>> byVoice=new LinkedHashMap<>();
+        for(Composition.Note n:c.notes)byVoice.computeIfAbsent(n.voice(),k->new ArrayList<>()).add(n);
+        byVoice.values().forEach(list->list.sort(Comparator.comparingDouble(Composition.Note::start)));
+        this.voiceGroups=byVoice;
+        this.img=new BufferedImage(w,h,BufferedImage.TYPE_3BYTE_BGR);this.g=img.createGraphics();g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         palette=switch(c.theme){case "blue"->new Color[]{new Color(114,178,255),new Color(246,235,179),new Color(230,240,255),new Color(105,220,239),new Color(200,166,255),new Color(255,170,197)};case "violet"->new Color[]{new Color(190,142,255),new Color(136,249,231),new Color(255,195,223),new Color(255,238,172),new Color(191,226,255)};default->new Color[]{new Color(255,113,140),new Color(255,177,109),new Color(249,223,122),new Color(242,245,255),new Color(210,222,255)};};
     }
     public byte[] frame(int frame){
@@ -25,12 +31,12 @@ public final class Visual {
         for(Composition.Chord chord:c.chords){double x=playX+(chord.start()-t)*pxps;if(x<0||x>w)continue;g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(9,(int)(11*scale))));g.setColor(new Color(116,126,162));g.drawString(chord.symbol(),(int)x+2,(int)(h*.19));}
         // Each illuminated segment is an actual sounding note; no Bezier sweep invents
         // intermediate pitches across a chord change. This also supports imported voices.
-        Map<String,List<Composition.Note>> voices=new LinkedHashMap<>();
-        for(Composition.Note n:c.notes)voices.computeIfAbsent(n.voice(),k->new ArrayList<>()).add(n);
         int voiceIndex=0,labels=0;
-        for(var entry:voices.entrySet()){
+        for(var entry:voiceGroups.entrySet()){
             Color color=palette[voiceIndex++%palette.length];Path2D segments=new Path2D.Double();
             for(Composition.Note n:entry.getValue()){
+                if(n.start()+n.duration()<t-playX/pxps)continue;
+                if(n.start()>t+(w-playX)/pxps)break;
                 double x0=playX+(n.start()-t)*pxps;
                 double x1=playX+(n.start()+n.duration()-t)*pxps;
                 if(x1<0||x0>w)continue;
@@ -40,7 +46,8 @@ public final class Visual {
             }
             stroke(segments,color,scale);
             for(Composition.Note n:entry.getValue()){
-                if(!(n.start()<=t+1e-9&&n.start()+n.duration()>t+1e-9))continue;
+                if(n.start()>t+1e-9)break;
+                if(n.start()+n.duration()<=t+1e-9)continue;
                 double y=yPitch(n.pitch(),cy,scale);
                 g.setColor(new Color(255,255,255,35));g.fill(new Ellipse2D.Double(playX-8*scale,y-8*scale,16*scale,16*scale));
                 g.setColor(color);g.fill(new Ellipse2D.Double(playX-3.4*scale,y-3.4*scale,6.8*scale,6.8*scale));

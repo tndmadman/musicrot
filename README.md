@@ -67,3 +67,7 @@ The 17 Java checks exercise deterministic seed output, seed variation, chord/not
 - CI/Linux rendering here does **not** prove RTX 3090 NVENC, Windows 10/11 compatibility, exact sub-frame acoustic onset sync, third-party soundfont/VST compliance, sustained 100-job unattended production, hard-disk exhaustion, or arbitrary licensed MIDI correctness. Those require direct on-device testing.
 
 Detailed measured container test results and release limitations: [docs/TEST_REPORT.md](docs/TEST_REPORT.md). GitHub Actions workflow tests Linux and Windows x264 smoke builds after pushes/PRs; consult the actual workflow results before claiming Windows compatibility.
+
+## Version 2 development additions
+
+The active feature branch now includes tempo-map MIDI import/export (including multi-track notes, pedal sustain and rests), note-event-accurate paths, five selectable locally synthesized instrument timbres (`warm-pad`, `soft-keys`, `nylon-pluck`, `glass`, `layered`), AAC loudness/true-peak audit, unique output names, lease-token fencing, and 720p/1080p queue profiles. Previous limitations sections reflect the initial v1 prototype; use the latest test and release report for current capabilities. CI success is not a replacement for full 1080p/RTX 3090 production certification.
