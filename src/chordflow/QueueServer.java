@@ -46,6 +46,15 @@ public final class QueueServer {
         j.p.remove("leaseToken");j.p.remove("worker");j.p.setProperty("updated",Long.toString(System.currentTimeMillis()));save(j);return j.p.getProperty("state");
     }
     private synchronized String retry(String id)throws IOException{Job j=get(id);if(!j.p.getProperty("state").equals("FAILED"))return "NOT_FAILED";j.p.setProperty("state","QUEUED");j.p.remove("worker");j.p.remove("leaseToken");j.p.remove("leaseUntil");save(j);return "QUEUED";}
+    /** Revoke the lease first; a stale worker can no longer mark this job READY. */
+    private synchronized String cancel(String id)throws IOException{
+        Job j=get(id);String state=j.p.getProperty("state");
+        if(state.equals("CANCELLED"))return "CANCELLED";
+        if(!state.equals("QUEUED")&&!state.equals("RUNNING"))return "NOT_CANCELLABLE";
+        j.p.setProperty("state","CANCELLED");j.p.setProperty("error","OPERATOR_CANCELLED");
+        j.p.remove("leaseToken");j.p.remove("leaseUntil");j.p.remove("worker");
+        j.p.setProperty("updated",Long.toString(System.currentTimeMillis()));save(j);return "CANCELLED";
+    }
     private String json()throws IOException{StringBuilder b=new StringBuilder("{\"paused\":"+paused+",\"draining\":"+draining+",\"jobs\":[");boolean first=true;for(Job j:all()){if(!first)b.append(',');first=false;Properties p=j.p;b.append("{\"id\":\"").append(j.id).append("\",\"state\":\"").append(clean(p.getProperty("state"))).append("\",\"seed\":").append(p.getProperty("seed")).append(",\"mode\":\"").append(clean(p.getProperty("mode"))).append("\",\"attempts\":").append(p.getProperty("attempts")).append(",\"output\":\"").append(clean(p.getProperty("output",""))).append("\",\"error\":\"").append(clean(p.getProperty("error",""))).append("\"}");}return b.append("]}").toString();}
     private static String clean(String s){return s.replace("\\","/").replace("\"","'").replace("\n"," ").replace("\r"," ");}
     private static Map<String,String> query(String url){Map<String,String> m=new HashMap<>();int index=url.indexOf('?');if(index<0)return m;for(String pair:url.substring(index+1).split("&")){String[] kv=pair.split("=",2);if(kv.length==2)m.put(URLDecoder.decode(kv[0],StandardCharsets.UTF_8),URLDecoder.decode(kv[1],StandardCharsets.UTF_8));}return m;}
@@ -79,6 +88,7 @@ public final class QueueServer {
                 case "/api/heartbeat"->response=store.heartbeat(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""));
                 case "/api/finish"->response=store.finish(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""),arg(q,"filename",""),arg(q,"sha",""),arg(q,"error",""));
                 case "/api/retry"->response=store.retry(arg(q,"id",""));
+                case "/api/cancel"->response=store.cancel(arg(q,"id",""));
                 case "/api/pause"->{store.paused=true;store.control();response="OK";}
                 case "/api/resume"->{store.paused=false;store.draining=false;store.control();response="OK";}
                 case "/api/drain"->{store.draining=true;store.control();response="OK";}
@@ -93,12 +103,27 @@ public final class QueueServer {
             String data=post(client,url+"/api/claim?worker="+encode(id));if(data.equals("NONE")){Thread.sleep(1500);continue;}
             String[] v=data.split("\\|");if(v.length!=10)throw new IOException("INVALID_CLAIM_RESPONSE: "+data);
             String job=v[0],token=v[7];System.out.println("CLAIM "+job+" seed="+v[1]);
-            ScheduledExecutorService heart=Executors.newSingleThreadScheduledExecutor();heart.scheduleAtFixedRate(()->{try{post(client,url+"/api/heartbeat?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token));}catch(Exception e){System.err.println("HEARTBEAT_FAILED "+e);}},20,20,TimeUnit.SECONDS);
+            Thread renderThread=Thread.currentThread();
+            java.util.concurrent.atomic.AtomicBoolean revoked=new java.util.concurrent.atomic.AtomicBoolean(false);
+            ScheduledExecutorService heart=Executors.newSingleThreadScheduledExecutor();
+            heart.scheduleAtFixedRate(()->{
+                try{
+                    String reply=post(client,url+"/api/heartbeat?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token));
+                    if(!reply.equals("OK")){revoked.set(true);renderThread.interrupt();}
+                }catch(Exception e){System.err.println("HEARTBEAT_FAILED "+e);}
+            },2,2,TimeUnit.SECONDS);
             try{
                 Composition c=Music.generate(Long.parseLong(v[1]),Integer.parseInt(v[2]),v[3],v[4]).withInstrument(v[9]);Production.Result result=Production.render(c,out,Integer.parseInt(v[5]),Integer.parseInt(v[6]),30,v[8]);
-                System.out.println("COMPLETE "+job+" server="+post(client,url+"/api/finish?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token)+"&filename="+encode(result.video().getFileName().toString())+"&sha="+result.sha256()));
-            }catch(Exception e){System.err.println("FAILED "+job+": "+e);post(client,url+"/api/finish?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token)+"&error="+encode(e.toString()));}
-            finally{heart.shutdownNow();}
+                if(revoked.get()||Thread.currentThread().isInterrupted())throw new InterruptedException("LEASE_REVOKED");
+                String finalState=post(client,url+"/api/finish?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token)+"&filename="+encode(result.video().getFileName().toString())+"&sha="+result.sha256());
+                System.out.println("COMPLETE "+job+" server="+finalState);
+                if(!finalState.equals("READY"))System.err.println("OUTPUT_NOT_APPROVED "+result.video());
+            }catch(Exception e){
+                System.err.println("FAILED "+job+": "+e);
+                // If canceled, finish() returns STALE_LEASE and preserves CANCELLED.
+                try{post(client,url+"/api/finish?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token)+"&error="+encode(e.toString()));}
+                catch(Exception network){System.err.println("FAIL_REPORT_UNDELIVERED "+network);}
+            }finally{heart.shutdownNow();Thread.interrupted();}
         }
     }
     private static String get(HttpClient c,String uri)throws Exception{HttpRequest req=HttpRequest.newBuilder(URI.create(uri)).timeout(java.time.Duration.ofSeconds(120)).GET().build();HttpResponse<String> r=c.send(req,HttpResponse.BodyHandlers.ofString());if(r.statusCode()!=200)throw new IOException("HTTP_"+r.statusCode()+": "+r.body());return r.body();}
@@ -115,7 +140,8 @@ public final class QueueServer {
         <table><thead><tr><th>Job</th><th>Seed</th><th>Mode</th><th>State</th><th>Attempts</th><th>Output / error</th><th>Action</th></tr></thead><tbody id="jobs"></tbody></table>
         <script>async function call(url){await fetch(url,{method:'POST'});refresh()}
         async function enqueue(){const p=new URLSearchParams();for(const k of ['count','seed','seconds','mode','theme','encoder','instrument'])p.set(k,document.getElementById(k).value);const width=Number(document.getElementById('resolution').value);p.set('width',width);p.set('height',width===1080?1920:1280);await call('/api/enqueue?'+p)}
-        async function refresh(){const data=await(await fetch('/api/jobs')).json();document.getElementById('summary').textContent='  '+(data.paused?'PAUSED':'ACTIVE')+(data.draining?' / DRAINING':'')+' · '+data.jobs.length+' jobs';document.getElementById('jobs').innerHTML=data.jobs.map(j=>`<tr><td>${j.id.substring(0,8)}</td><td>${j.seed}</td><td>${j.mode}</td><td>${j.state}</td><td>${j.attempts}</td><td>${j.output?`<a style="color:#93cdff" href="#preview" onclick="preview('${j.output}')">Preview MP4</a>`:j.error}</td><td>${j.state==='FAILED'?`<button onclick="call('/api/retry?id=${j.id}')">Retry</button>`:''}</td></tr>`).join('')}
+        function htmlEscape(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+        async function refresh(){const data=await(await fetch('/api/jobs')).json();document.getElementById('summary').textContent='  '+(data.paused?'PAUSED':'ACTIVE')+(data.draining?' / DRAINING':'')+' · '+data.jobs.length+' jobs';document.getElementById('jobs').innerHTML=data.jobs.map(j=>`<tr><td>${j.id.substring(0,8)}</td><td>${j.seed}</td><td>${htmlEscape(j.mode)}</td><td>${htmlEscape(j.state)}</td><td>${j.attempts}</td><td>${j.output?`<a style="color:#93cdff" href="#preview" onclick="preview('${j.output}')">Preview MP4</a>`:htmlEscape(j.error)}</td><td>${j.state==='FAILED'?`<button onclick="call('/api/retry?id=${j.id}')">Retry</button>`:'' }${['QUEUED','RUNNING'].includes(j.state)?`<button onclick="call('/api/cancel?id=${j.id}')">Cancel</button>`:''}</td></tr>`).join('')}
         function preview(name){if(!/^chordflow-[a-zA-Z0-9-]+\\.mp4$/.test(name))return;document.getElementById('preview').style.display='block';const player=document.getElementById('video');player.src='/api/media/'+encodeURIComponent(name);player.load();player.play().catch(()=>{})}
         refresh();setInterval(refresh,2500);</script></body></html>
         """;
