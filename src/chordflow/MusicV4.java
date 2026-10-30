@@ -117,8 +117,11 @@ public final class MusicV4 {
                 pitches=seventh?new int[]{36+root,60+root,60+root+third,60+root+fifth,60+root+seventhInterval}:
                     new int[]{36+root,60+root,60+root+third,60+root+fifth};
                 String triad=(third==3&&fifth==6)?"dim":third==3?"m":"";
-                String suffix=seventh?(seventhInterval==11?"maj7":third==3&&fifth==6?"m7b5":"7"):"";
-                symbol=ROOTS[root]+triad+suffix;
+                String qualitySuffix=!seventh?triad:
+                    (third==3&&fifth==6)?"m7b5":
+                    third==3?(seventhInterval==11?"m(maj7)":"m7"):
+                    seventhInterval==11?"maj7":"7";
+                symbol=ROOTS[root]+qualitySuffix;
             }
             hs.add(new Composition.Harmony(at*p.beat(),duration*p.beat(),symbol,pitches,frets));
             at+=duration;index++;
