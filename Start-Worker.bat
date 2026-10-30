@@ -13,6 +13,12 @@ echo  Controller: http://127.0.0.1:8791
 echo  Leave this window open to process queued videos.
 echo ==================================================
 echo.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\wait-controller.ps1"
+if errorlevel 1 (
+  echo ERROR: Controller is not running. Start it first.
+  pause
+  exit /b 1
+)
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-worker.ps1"
 set "RC=%ERRORLEVEL%"
 echo.
