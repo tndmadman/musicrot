@@ -111,3 +111,9 @@ Local verification added schema-roundtrip/corruption regression tests and
 queue cancellation/fencing tests. The output tests and hosted CI are not
 substitutes for full 1080p 20-job Windows/RTX3090 acceptance.
 
+
+## Music + visual generation update (V3)
+
+**Newly generated videos are full musical arrangements rather than equally spaced sustained chord blocks.** The deterministic generator now produces independent melody motifs with phrase variations, rhythmic bass, strummed/arpeggiated accompaniment, and synthesized kick/snare/hi-hat beats. Harmony labels and guitar diagrams are separate from exact sounding note snapshots; no fictitious sounding notes are displayed. New schema-v3 composition JSON preserves the complete melodic and percussion arrangement, while the existing schema-v2 importer/replay remains supported.
+
+The Command Center now offers **Noir Studio (default)**, **Ivory Score**, and **Analog Olive**; older gold/blue/violet jobs render with a neutral legacy fallback, not a pastel/neon blue theme. See [V3 music and visual engineering notes](docs/MUSIC_VISUAL_OVERHAUL_V3.md). The synthesizer is still procedural, not a licensed sampled-instrument library; sample realism and human music-quality evaluation are separate follow-up milestones.
