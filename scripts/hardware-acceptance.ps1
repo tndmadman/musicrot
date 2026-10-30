@@ -9,8 +9,9 @@ Write-Host 'ChordFlow Windows hardware acceptance - no publishing' -ForegroundCo
 foreach ($app in @('java','javac','ffmpeg','ffprobe')) {
     if (-not (Get-Command $app -ErrorAction SilentlyContinue)) { throw "DEPENDENCY_UNAVAILABLE: $app" }
 }
-$version = (& javac -version 2>&1 | Out-String).Trim()
-if ($version -notmatch '^javac 21\.') { throw "JDK 21 required: $version" }
+$version = (& javac -version | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $version -notmatch '^javac\s+(\d+)(?:\.|$)') { throw "Unable to determine JDK version: $version" }
+if ([int]$Matches[1] -lt 20) { throw "JDK 20 or newer required: $version" }
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     & nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
 } else { Write-Warning 'NVENC hardware verification cannot be certified without nvidia-smi' }
