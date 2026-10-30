@@ -14,7 +14,8 @@ public final class CompositionIO {
         try {
             Object parsed=new Parser(Files.readString(path,StandardCharsets.UTF_8)).value();
             Map<String,Object> root=obj(parsed);
-            if(integer(root,"schemaVersion")!=2)throw new IllegalArgumentException("COMPOSITION_SCHEMA_UNSUPPORTED");
+            int schema=integer(root,"schemaVersion");
+            if(schema!=2&&schema!=3)throw new IllegalArgumentException("COMPOSITION_SCHEMA_UNSUPPORTED");
             List<Composition.Chord> chords=new ArrayList<>();
             for(Object element:array(root,"chordEvents",50_000)){
                 Map<String,Object> c=obj(element);
@@ -35,9 +36,21 @@ public final class CompositionIO {
             for(Object element:array(root,"tempoMap",2_000)){
                 Map<String,Object> t=obj(element);tempos.add(new Composition.Tempo(number(t,"beat"),number(t,"bpm")));
             }
+            List<Composition.Harmony> harmony=new ArrayList<>();List<Composition.Drum> drums=new ArrayList<>();
+            if(schema==3){
+                for(Object element:array(root,"harmonyEvents",50_000)){
+                    Map<String,Object> h=obj(element);List<Object> raw=array(h,"midiPitches",128);int[] pitches=new int[raw.size()];
+                    for(int i=0;i<pitches.length;i++)pitches[i]=intValue(raw.get(i));int[] frets=null;
+                    if(h.containsKey("frets")&&h.get("frets")!=null){List<Object> f=array(h,"frets",6);frets=new int[f.size()];for(int i=0;i<frets.length;i++)frets[i]=intValue(f.get(i));}
+                    harmony.add(new Composition.Harmony(number(h,"startSeconds"),number(h,"durationSeconds"),string(h,"symbol"),pitches,frets));
+                }
+                for(Object element:array(root,"drumEvents",100_000)){Map<String,Object> d=obj(element);
+                    drums.add(new Composition.Drum(string(d,"kind"),number(d,"startSeconds"),integer(d,"velocity")));
+                }
+            }
             return new Composition(longValue(root,"seed"),string(root,"title"),string(root,"mode"),string(root,"theme"),
                     string(root,"rights"),string(root,"key"),string(root,"scaleMode"),number(root,"bpm"),
-                    number(root,"durationSeconds"),chords,notes,tempos,string(root,"instrumentPreset"));
+                    number(root,"durationSeconds"),chords,notes,tempos,string(root,"instrumentPreset"),harmony,drums,schema==3);
         } catch(IllegalArgumentException e){throw new IOException("INVALID_COMPOSITION_JSON: "+e.getMessage(),e);}
     }
     private static Map<String,Object> obj(Object v){if(!(v instanceof Map<?,?> m))throw new IllegalArgumentException("EXPECTED_OBJECT");
