@@ -8,13 +8,31 @@ import java.util.*;
 public final class Audio {
     public static final int RATE=48000;
     public record Stats(double peak,double rms,double silenceFraction) {}
+    /**
+     * Published videos use actual sampled instrument recordings by default.
+     * Only an explicit operator choice of "preview" permits procedural audio.
+     * Self-tests and lightweight previews continue to call synth() directly.
+     */
+    public static Stats synthProduction(Composition c,Path wav)throws IOException{
+        String quality=System.getenv().getOrDefault("CHORDFLOW_AUDIO_QUALITY","sampled");
+        if(!Set.of("auto","sampled","preview").contains(quality))
+            throw new IOException("CHORDFLOW_AUDIO_QUALITY_INVALID");
+        if(quality.equals("preview")){
+            System.err.println("WARNING SYNTHETIC_PREVIEW_AUDIO: not natural instrument sound");
+            return synthPreview(c,wav);
+        }
+        return SampledAudio.synth(c,wav);
+    }
     public static Stats synth(Composition c,Path wav)throws IOException{
-        String quality=System.getenv().getOrDefault("CHORDFLOW_AUDIO_QUALITY","auto");
+        String quality=System.getenv().getOrDefault("CHORDFLOW_AUDIO_QUALITY","preview");
         if(!Set.of("auto","sampled","preview").contains(quality))
             throw new IOException("CHORDFLOW_AUDIO_QUALITY_INVALID");
         if(quality.equals("sampled")||(quality.equals("auto")&&SampledAudio.configured()))
             return SampledAudio.synth(c,wav);
-        // Explicit sampled mode never silently degrades to these procedural preview voices.
+        return synthPreview(c,wav);
+    }
+    private static Stats synthPreview(Composition c,Path wav)throws IOException{
+        // Portable synthetic tones are explicitly a preview-only fallback.
         int samples=(int)Math.round(c.duration*RATE);
         if(samples<1)throw new IOException("AUDIO_DURATION_INVALID");
         float[] left=new float[samples],right=new float[samples];
