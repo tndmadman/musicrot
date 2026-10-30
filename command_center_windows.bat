@@ -23,6 +23,13 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\check-real-instruments.ps1"
+if errorlevel 1 (
+  echo.
+  echo STARTUP BLOCKED: Configure a sampled instrument bank before producing videos.
+  pause
+  exit /b 1
+)
 if /I "%~1"=="--preflight" (
   echo ChordFlow launcher preflight passed.
   exit /b 0
