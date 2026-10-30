@@ -14,7 +14,18 @@ public final class SelfTest {
         check(a.at(0).symbol().equals(a.chords.get(0).symbol()),"playhead-first-chord");
         check(a.at(9.999).symbol().equals(a.chords.get(a.chords.size()-1).symbol()),"playhead-last-chord");
         for(long seed=0;seed<100;seed++)for(String mode:List.of("flow","guitar"))Music.generate(seed,60,mode,"blue").validate();check(true,"200-generated-compositions-valid");
-        Composition guitar=Music.generate(89,10,"guitar","blue");check(guitar.harmony.stream().allMatch(x->x.frets()!=null),"exact-guitar-frets");
+        // Harmonic QA: generated major/minor/diminished triads must contain
+        // actual major/minor thirds and proper fifths, not fabricated intervals.
+        for(long seed=0;seed<40;seed++){
+            Composition piece=MusicV4.generate(seed,24,"flow","noir");
+            for(Composition.Harmony h:piece.harmony){
+                int[] p=h.pitches();
+                int third=Math.floorMod(p[2]-p[1],12),fifth=Math.floorMod(p[3]-p[1],12);
+                check(Set.of(3,4).contains(third)&&Set.of(6,7).contains(fifth),
+                    "diatonic-triad-intervals-"+seed+"-"+Math.round(h.start()*10));
+            }
+        }
+                Composition guitar=Music.generate(89,10,"guitar","blue");check(guitar.harmony.stream().allMatch(x->x.frets()!=null),"exact-guitar-frets");
         Composition inversion=Music.generate(2,10,"guitar","blue");check(inversion.harmony.stream().allMatch(h->h.frets()!=null&&h.pitches().length>0),"harmony-guitar-inversion-exact");
         fails(()->new Composition(1,"bad","guitar","blue","ORIGINAL_GENERATED",80,10,List.of(new Composition.Chord(0,10,"C",new int[]{60},new int[]{-1,3,2,0,1,0})),List.of(new Composition.Note("voice-0",60,0,10,75))),"wrong-guitar-fingering-rejected");
         fails(()->new Composition(1,"bad","flow","blue","ORIGINAL_GENERATED",80,10,List.of(new Composition.Chord(0,10,"C",new int[]{60},null)),List.of(new Composition.Note("voice-0",128,0,10,75))),"out-of-range-midi-rejected");
