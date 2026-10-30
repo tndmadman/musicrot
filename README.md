@@ -16,9 +16,9 @@ Windows-first, local, original procedural instrumental visualization engine. Not
 
 In the Command Center, **Random seed for every video** is checked by default. Each job receives a unique randomly generated seed when **Queue batch** is clicked, including when you queue another batch. The precise seed is shown in the job table so you can reproduce a composition later. Uncheck it to enter a manual starting seed; that mode assigns seed, seed+1, seed+2, etc. The API keeps the previous sequential behavior unless `randomSeed=true` is explicitly supplied.
 
-Every completed **READY** video has a **Delete video** button. A confirmation is required; deleting permanently removes only the job's MP4, SHA-256 manifest, MIDI and composition JSON from `chordflow-data/output/`. The job remains as **DELETED** in history; its preview is disabled. Queued/running jobs cannot be deleted (use **Cancel** first). Tampered videos or unsafe output paths are rejected. Interrupted deletions can be retried from **DELETING** or **DELETE_FAILED**. These deletions do not affect any AutoNewsRoller data or third-party files.
+Every completed **READY** video has a **Delete video** button. A confirmation is required; deleting permanently removes only the job's MP4, SHA-256 manifest, MIDI and composition JSON from `chordflow-data/output/`. The video row disappears from the Command Center and `/api/jobs` immediately; previously deleted rows are hidden too. A small internal `DELETED` job journal remains on disk to make deletion restart-safe and idempotent; it is **not shown in the website**. Queued/running jobs cannot be deleted (use **Cancel** first). Tampered videos or unsafe output paths are rejected. Interrupted deletions can be retried from **DELETING** or **DELETE_FAILED**. These deletions do not affect any AutoNewsRoller data or third-party files.
 
-The regression suite `tests/integration_queue_delete_seed.py` verifies both modes, fresh seeds per batch, permanent output deletion, refusal of unsafe/tampered deletions, and restart persistence.
+The regression suite `tests/integration_queue_delete_seed.py` verifies both modes, fresh seeds per batch, permanent output deletion, refusal of unsafe/tampered deletions, and the absence of deleted rows immediately and after restart.
 
 **PowerShell alternative:**
 
