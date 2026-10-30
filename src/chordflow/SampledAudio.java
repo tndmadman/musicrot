@@ -44,9 +44,28 @@ public final class SampledAudio {
     public static boolean configured(){
         try{return soundbank()!=null;}catch(IOException e){return false;}
     }
+    /** Resolve a persistent local Windows installation without touching system PATH. */
+    private static String fluidsynthExecutable() throws IOException {
+        String configured=System.getenv("CHORDFLOW_FLUIDSYNTH");
+        if(configured!=null&&!configured.isBlank())return configured;
+        Path saved=Path.of("chordflow-data","fluidsynth.path");
+        if(Files.isRegularFile(saved)){
+            String value=Files.readString(saved).trim();
+            if(!value.isBlank()){
+                if(!Files.isRegularFile(Path.of(value)))throw new IOException("FLUIDSYNTH_PATH_INVALID: "+value);
+                return value;
+            }
+        }
+        for(Path local:List.of(Path.of("tools","fluidsynth","bin","fluidsynth.exe"),
+            Path.of("tools","fluidsynth","fluidsynth.exe"))){
+            if(Files.isRegularFile(local))return local.toAbsolutePath().toString();
+        }
+        return "fluidsynth"; // Resolve through PATH, if installed globally.
+    }
     public static Audio.Stats synth(Composition c,Path wav)throws IOException{
         Path sf=soundbank();
-        String executable=System.getenv().getOrDefault("CHORDFLOW_FLUIDSYNTH","fluidsynth");
+        String executable=fluidsynthExecutable();
+
         Path work=Files.createTempDirectory("chordflow-sf2-");
         try{
             Path midi=work.resolve("composition.mid"),raw=work.resolve("samples.wav");
