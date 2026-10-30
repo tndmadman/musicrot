@@ -123,8 +123,11 @@ with tempfile.TemporaryDirectory(prefix='cf-delete-seed-') as tmp:
 
         assert request('/api/delete?' + q(id=output_job), post=True)[1] == 'DELETED'
         assert all(not f.exists() for f in files)
-        assert jobs()[output_job]['state'] == 'DELETED'
-        assert not jobs()[output_job]['output']
+        # The successful deletion must remove the row from both API and dashboard data.
+        assert output_job not in jobs()
+        journal = work / 'jobs' / (output_job + '.properties')
+        assert journal.is_file() and 'state=DELETED' in journal.read_text()
+        assert 'output=' not in journal.read_text()
         assert request('/api/delete?' + q(id=output_job), post=True)[1] == 'DELETED'
         assert request('/api/retry?' + q(id=output_job), post=True)[1] == 'NOT_FAILED'
         status, body = request('/api/media/' + basename + '.mp4', allow_error=True)
@@ -136,8 +139,15 @@ with tempfile.TemporaryDirectory(prefix='cf-delete-seed-') as tmp:
         controller.terminate(); controller.wait(timeout=10)
         controller = subprocess.Popen(command, cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         wait_for_server()
-        assert jobs()[output_job]['state'] == 'DELETED'
-        print('PASS deleted state durable across controller restart')
+        assert output_job not in jobs()
+        assert 'state=DELETED' in journal.read_text()
+        print('PASS deleted job hidden after controller restart and durable journal retained')
+        # Previously deleted jobs from older ChordFlow releases must also be hidden.
+        old_journal = work / 'jobs' / 'old-deleted-fixture.properties'
+        old_journal.write_text('state=DELETED\\nseed=42\\nmode=flow\\nattempts=0\\n')
+        assert 'old-deleted-fixture' not in jobs()
+        print('PASS historical DELETED jobs are hidden from the API immediately')
+
     finally:
         if worker is not None:
             worker.terminate()
