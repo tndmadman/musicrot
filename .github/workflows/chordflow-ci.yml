@@ -8,6 +8,8 @@ jobs:
     name: java-linux-jdk${{ matrix.java }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CHORDFLOW_AUDIO_QUALITY: preview # CI is exercising sample-free preview
     strategy:
       fail-fast: false
       matrix:
@@ -20,6 +22,12 @@ jobs:
           java-version: ${{ matrix.java }}
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: bash scripts/build.sh
+      - name: Production requires a SoundFont and must not silently synthesize
+        run: |
+          if CHORDFLOW_AUDIO_QUALITY=sampled java -Djava.awt.headless=true -cp build chordflow.Main render --seed 8 --seconds 2 --mode flow --width 240 --height 426 --encoder x264 --out output > sampled-fail.log 2>&1; then
+            echo "Unexpected sampled render without configured bank"; exit 1
+          fi
+          grep -q REAL_INSTRUMENTS_REQUIRED sampled-fail.log
       - name: Verify Java 20 compatible classes
         run: |
           javap -verbose -classpath build chordflow.Main | grep 'major version: 64'
@@ -34,6 +42,8 @@ jobs:
     name: java-windows-jdk${{ matrix.java }}
     runs-on: windows-latest
     timeout-minutes: 20
+    env:
+      CHORDFLOW_AUDIO_QUALITY: preview # CI is exercising sample-free preview
     strategy:
       fail-fast: false
       matrix:
