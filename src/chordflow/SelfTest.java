@@ -34,6 +34,30 @@ public final class SelfTest {
         check(a.json().contains("\"schemaVersion\":3")&&a.json().contains("\"tempoMap\""),"versioned-tempo-schema");
         check(a.arranged&&a.harmony.size()>0&&a.drums.size()>0,"independent-harmony-percussion");
         check(a.notes.stream().anyMatch(n->n.voice().startsWith("lead"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("bass"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("arp")),"multi-track-melody-bass-arpeggio");
+        MusicFingerprint.Signature fingerprint=MusicFingerprint.of(a);
+        check(fingerprint.encode().equals(MusicFingerprint.Signature.parse(fingerprint.encode()).encode()),
+            "fingerprint-durable-roundtrip");
+        Composition sameMusicDifferentSeed=new Composition(98765,a.title,a.mode,a.theme,a.rights,
+            a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,a.tempoMap,a.instrumentPreset,a.harmony,a.drums,a.arranged);
+        check(MusicFingerprint.nearDuplicate(fingerprint,MusicFingerprint.of(sameMusicDifferentSeed)),
+            "seed-metadata-does-not-evade-duplicate-detection");
+        List<Composition.Note> shiftedNotes=a.notes.stream().map(n->new Composition.Note(n.voice(),n.pitch()+12,
+            n.start(),n.duration(),n.velocity())).toList();
+        List<Composition.Chord> shiftedChords=a.chords.stream().map(ch->new Composition.Chord(ch.start(),ch.duration(),
+            ch.symbol(),Arrays.stream(ch.pitches()).map(p->p+12).toArray(),null)).toList();
+        List<Composition.Harmony> shiftedHarmony=a.harmony.stream().map(h->new Composition.Harmony(h.start(),h.duration(),
+            h.symbol(),Arrays.stream(h.pitches()).map(p->p+12).toArray(),null)).toList();
+        Composition transposed=new Composition(a.seed+1,a.title,a.mode,a.theme,a.rights,a.key,a.scaleMode,a.bpm,
+            a.duration,shiftedChords,shiftedNotes,a.tempoMap,a.instrumentPreset,shiftedHarmony,a.drums,true);
+        check(fingerprint.melody().equals(MusicFingerprint.of(transposed).melody()),
+            "octave-shifted-melody-recognized");
+        Set<String> musicalSignatures=new HashSet<>();
+        for(int i=0;i<20;i++)musicalSignatures.add(MusicFingerprint.of(
+            MusicV4.generate(i+100,25,"flow","noir","pop")).melody());
+        check(musicalSignatures.size()>=18,"same-style-twenty-song-melodic-diversity");
+        MusicQuality.Report quality=MusicQuality.analyze(Music.generate(317,60,"flow","noir"));
+        check(quality.leadPhrases()>=4&&quality.distinctMelodyWindows()>=3,
+            "multi-section-melodic-development");
         Set<Long> rhythmicOffsets=new HashSet<>();
         for(Composition.Note n:a.notes)if(n.voice().startsWith("lead"))rhythmicOffsets.add(Math.round((n.start()*a.bpm/60%4)*100));
         check(rhythmicOffsets.size()>=3,"uneven-melodic-rhythm");
@@ -57,7 +81,12 @@ public final class SelfTest {
         Visual newPalette=new Visual(oldTheme,240,426,30);
         check(newPalette.frame(0).length==240*426*3,"legacy-theme-fallback-renders");
         Path tmp=Files.createTempDirectory("chordflow-test-");try{
-            Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());check(seq.getTracks()[0].size()>a.notes.size(),"valid-midi-export");
+            Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());
+            long midiOnsets=0;for(Track track:seq.getTracks())for(int mi=0;mi<track.size();mi++){
+                MidiMessage msg=track.get(mi).getMessage();
+                if(msg instanceof ShortMessage sm&&sm.getChannel()!=9&&sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0)midiOnsets++;
+            }
+            check(midiOnsets==a.notes.size()&&seq.getTracks().length>=5,"multitrack-midi-export-accurate");
             Composition imported=Music.importMidi(midi,"Licensed by creator",192,10,"gold");check(imported.notes.size()==a.notes.size(),"authorized-midi-import-roundtrip");
             Path compositionPath=tmp.resolve("saved.composition.json");a.save(compositionPath);
             Composition loaded=CompositionIO.read(compositionPath);
