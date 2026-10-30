@@ -6,6 +6,12 @@ Windows-first, local, original procedural instrumental visualization engine. Not
 
 ## Windows 10 / 11 quick start
 
+**Double-click start:** install the prerequisites below, then double-click **`Start-ChordFlow.bat`** in the repository root. It builds and runs self-tests, opens separate controller and worker console windows (after checking that the controller is ready), and opens the local dashboard.
+
+Other root-level shortcuts: `Build-ChordFlow.bat` (build and self-test only), `Start-Controller.bat` (dashboard only), `Start-Worker.bat` (worker only). Do **not** close the controller or worker consoles while processing jobs. See [Windows batch launcher instructions](docs/WINDOWS_BATCH_LAUNCHERS.md).
+
+**PowerShell alternative:**
+
 1. Install **JDK 21** (not just JRE), **FFmpeg** including ffprobe; ensure `java`, `javac`, `ffmpeg`, `ffprobe` are on `PATH`. All tools must work in PowerShell.
 2. In PowerShell at the repository root:
 
