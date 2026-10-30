@@ -19,5 +19,5 @@ public final class Main {
         }
     }
     private static String option(String[] args,String name,String fallback){for(int i=1;i<args.length-1;i++)if(args[i].equals(name))return args[i+1];return fallback;}
-    private static void help(){System.out.println("ChordFlow Java 21 CLI: render-json --input composition.json [--out output], render [--seed N --seconds 60 --mode flow|guitar --theme gold|blue|violet --instrument warm-pad|soft-keys|nylon-pluck|glass|layered --width 1080 --height 1920 --fps 30 --encoder auto|nvenc|x264 --out output], compose, import-midi --input PATH --rights LICENSE, import-midi-render --input PATH --rights LICENSE --mode flow|guitar --seconds 60, serve [--port 8791], worker [--url URL], selftest");}
+    private static void help(){System.out.println("ChordFlow Java 20+ CLI: render-json --input composition.json [--out output], render [--seed N --seconds 60 --mode flow|guitar --theme gold|blue|violet --instrument warm-pad|soft-keys|nylon-pluck|glass|layered --width 1080 --height 1920 --fps 30 --encoder auto|nvenc|x264 --out output], compose, import-midi --input PATH --rights LICENSE, import-midi-render --input PATH --rights LICENSE --mode flow|guitar --seconds 60, serve [--port 8791], worker [--url URL], selftest");}
 }
