@@ -242,13 +242,26 @@ public final class MusicV4 {
                 for(int sub=0;sub<4;sub++)if(r.nextInt(4)==0)addDrum(drums,"hat",(t+sub)*p.beat(),30+r.nextInt(18),seconds);
                 continue;
             }
+            // Song-level groove identity: the same genre does not imply the same
+            // kick pattern, and section-level development preserves coherence.
+            int identity=Math.floorMod(p.seed(),4);
             double[] kicks=switch(family){
-                case 0->new double[]{0,2.5};
-                case 2->new double[]{0,2.75};
-                case 3->new double[]{0,2,3.5};
-                case 4->new double[]{0,1.5,2.75};
-                case 5->new double[]{0,1,2,3};
-                default->new double[]{0,2.5,3.5};
+                case 0->switch(identity){
+                    case 0->new double[]{0,2.5};case 1->new double[]{0,1.75,3.5};
+                    case 2->new double[]{0,2};default->new double[]{0,2.75,3.25};};
+                case 2->switch(identity){
+                    case 0->new double[]{0,2.75};case 1->new double[]{0,2,3.5};
+                    case 2->new double[]{0,1.5,2.5};default->new double[]{0,2.5};};
+                case 3->switch(identity){
+                    case 0->new double[]{0,2,3.5};case 1->new double[]{0,2.5};
+                    case 2->new double[]{0,1.5,2.75};default->new double[]{0,2,3};};
+                case 4->switch(identity){
+                    case 0->new double[]{0,1.5,2.75};case 1->new double[]{0,.75,2.5,3.5};
+                    case 2->new double[]{0,2.25,3.25};default->new double[]{0,1.75,3};};
+                case 5->switch(identity){
+                    case 0->new double[]{0,1,2,3};case 1->new double[]{0,1,2,3.5};
+                    case 2->new double[]{0,1,2.5,3};default->new double[]{0,1.5,2,3};};
+                default->identity%2==0?new double[]{0,2.5,3.5}:new double[]{0,1.5,3};
             };
             for(double kick:kicks){
                 if(kick>0&&r.nextDouble()<.14&&bar%4!=0)continue;
@@ -258,12 +271,15 @@ public final class MusicV4 {
                 double extra=family==4?3.75:3.5;
                 if(r.nextBoolean())addDrum(drums,"kick",(t+extra)*p.beat(),56+r.nextInt(25),seconds);
             }
-            double[] snares=family==0?new double[]{2}:family==6?new double[]{1.5,3.5}:new double[]{1,3};
+            double[] snares=family==0?(identity%2==0?new double[]{2}:new double[]{1,3}):
+                family==6?(identity%2==0?new double[]{1.5,3.5}:new double[]{1,3}):
+                family==2&&identity==3?new double[]{2}:new double[]{1,3};
             for(double back:snares)addDrum(drums,"snare",(t+back)*p.beat(),78+r.nextInt(25),seconds);
             if(transition)addDrum(drums,"snare",(t+3.75)*p.beat(),42+r.nextInt(26),seconds);
             int subdiv=family==4||family==5?16:8;
             for(int sub=0;sub<subdiv;sub++){
-                if(r.nextDouble()<(transition?.21:.11))continue;
+                double dropout=bar%8==4?.34:(transition?.21:.11);
+                if(r.nextDouble()<dropout)continue;
                 double step=4.0*sub/subdiv;
                 double swing=(sub%2==1)?p.style().swing():0;
                 boolean open=sub==subdiv-1&&transition||sub==subdiv/2-1&&bar%4==2&&r.nextBoolean();
