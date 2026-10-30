@@ -35,6 +35,13 @@ jobs:
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg -y --no-progress }
           if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) { throw 'ffprobe missing in PATH' }
       - run: ./scripts/build.ps1
+      - name: Verify Windows batch launcher and startup assets
+        run: |
+          cmd.exe /d /c "Build-ChordFlow.bat --no-pause"
+          if ($LASTEXITCODE -ne 0) { throw 'Build-ChordFlow.bat failed' }
+          foreach ($path in @('Start-ChordFlow.bat', 'Start-Controller.bat', 'Start-Worker.bat', 'scripts/wait-controller.ps1')) {
+            if (-not (Test-Path $path)) { throw "Missing launcher: $path" }
+          }
       - run: python tests/integration_queue_v2.py
       - name: Render Windows 2s smoke
         run: |
