@@ -58,9 +58,12 @@ jobs:
             $env:PATH = $ff.Directory.FullName + [IO.Path]::PathSeparator + $env:PATH
             Add-Content -Path $env:GITHUB_PATH -Value $ff.Directory.FullName
           }
-          & ffmpeg -version | Select-Object -First 1
-          & ffprobe -version | Select-Object -First 1
-          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg or ffprobe did not start' }
+          $ffVersion = @(& ffmpeg -version)
+          if ($LASTEXITCODE -ne 0 -or $ffVersion.Count -eq 0) { throw 'FFmpeg did not start' }
+          Write-Host $ffVersion[0]
+          $probeVersion = @(& ffprobe -version)
+          if ($LASTEXITCODE -ne 0 -or $probeVersion.Count -eq 0) { throw 'FFprobe did not start' }
+          Write-Host $probeVersion[0]
       - run: ./scripts/build.ps1
       - name: Verify Java 20 compatible classes
         run: |
