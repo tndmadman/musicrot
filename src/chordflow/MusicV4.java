@@ -55,9 +55,14 @@ public final class MusicV4 {
         return generate(seed,seconds,mode,theme,"auto");
     }
     public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle){
+        return generate(seed,seconds,mode,theme,requestedStyle,0);
+    }
+    public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,int variation){
+        if(variation<0||variation>12)throw new IllegalArgumentException("INVALID_COMPOSITION_VARIATION");
         if(seconds<2||seconds>180)throw new IllegalArgumentException("DURATION_OUT_OF_RANGE");
         if(!Set.of("flow","guitar").contains(mode))throw new IllegalArgumentException("INVALID_MODE");
-        Random r=new Random(seed^0x6A09E667F3BCC909L);
+        long planSeed=seed^(0xD1B54A32D192ED03L*variation);
+        Random r=new Random(planSeed^0x6A09E667F3BCC909L);
         Style style=null;
         if(requestedStyle.equals("auto"))style=STYLES[Math.floorMod(seed,STYLES.length)];
         else for(Style s:STYLES)if(s.id().equals(requestedStyle))style=s;
@@ -68,7 +73,7 @@ public final class MusicV4 {
         int[] progressions=guitar?GUITAR_PROGRESSIONS[r.nextInt(GUITAR_PROGRESSIONS.length)]:
             (minor?MINOR_PROGRESSIONS:MAJOR_PROGRESSIONS)[r.nextInt(minor?MINOR_PROGRESSIONS.length:MAJOR_PROGRESSIONS.length)];
         double beat=60.0/tempo,totalBeats=seconds/beat;
-        Plan plan=new Plan(seed,style,key,minor,tempo,beat,totalBeats,progressions,minor?MINOR:MAJOR,guitar,r.nextInt(7));
+        Plan plan=new Plan(planSeed,style,key,minor,tempo,beat,totalBeats,progressions,minor?MINOR:MAJOR,guitar,r.nextInt(7));
         List<Composition.Harmony> harmony=harmonize(plan,r,seconds);
         List<Composition.Note> notes=new ArrayList<>();
         List<Composition.Drum> drums=new ArrayList<>();
@@ -77,7 +82,7 @@ public final class MusicV4 {
         groove(plan,drums,seconds);
         notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
         List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
-        Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed,mode,theme,
+        Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed+" variation "+variation,mode,theme,
             "ORIGINAL_GENERATED",ROOTS[key],minor?"minor":"major",tempo,seconds,
             snapshots,notes,List.of(new Composition.Tempo(0,tempo)),
             guitar?"nylon-pluck":"soft-keys",harmony,drums,true);
