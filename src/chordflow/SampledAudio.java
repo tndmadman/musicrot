@@ -28,7 +28,11 @@ public final class SampledAudio {
         Path work=Files.createTempDirectory("chordflow-sf2-");
         try{
             Path midi=work.resolve("composition.mid"),raw=work.resolve("samples.wav");
-            Music.writeMidi(c,midi);
+            try {
+                Music.writeMidi(c,midi);
+            } catch (Exception e) {
+                throw new IOException("SAMPLED_MIDI_EXPORT_FAILED: "+e.getMessage(),e);
+            }
             invoke(List.of(executable,"-ni","-F",raw.toString(),"-r","48000",
                 sf.toString(),midi.toString()),work.resolve("fluidsynth.log"),180);
             if(!Files.isRegularFile(raw)||Files.size(raw)<1000)
