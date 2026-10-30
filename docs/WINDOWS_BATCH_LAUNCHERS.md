@@ -18,7 +18,9 @@ The controller command window stays open. The worker command window stays open. 
 
 ## Requirements
 
-Windows 10/11, JDK **21** with java and javac on PATH, and FFmpeg/ffprobe on PATH. No Ollama, ComfyUI, TTS, Python package or soundfont is required for the built-in music generator.
+The launcher compiles with `javac --release 20` and supports an existing `javac 20` installation. Stale compiled class files are removed before each build to avoid Java 21 bytecode being used accidentally.
+
+Windows 10/11, JDK **20 or newer** with java and javac on PATH, and FFmpeg/ffprobe on PATH. No Ollama, ComfyUI, TTS, Python package or soundfont is required for the built-in music generator.
 
 This launcher invokes PowerShell using **process-scoped** ExecutionPolicy Bypass and does not change the machine's persistent execution-policy settings.
 
