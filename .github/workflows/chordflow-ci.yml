@@ -25,6 +25,7 @@ jobs:
           javap -verbose -classpath build chordflow.Main | grep 'major version: 64'
       - run: python3 tests/integration_queue_delete_seed.py
       - run: python3 tests/integration_queue_v2.py
+      - run: python3 tests/integration_music_fingerprint.py
       - run: java -Djava.awt.headless=true -cp build chordflow.Main render --seed 44 --seconds 2 --mode guitar --width 240 --height 426 --encoder x264 --out output
       - name: Validate MP4 codec
         run: |
@@ -79,6 +80,7 @@ jobs:
           }
       - run: python tests/integration_queue_delete_seed.py
       - run: python tests/integration_queue_v2.py
+      - run: python tests/integration_music_fingerprint.py
       - name: One-click Windows command center plus worker end-to-end smoke
         run: ./tests/windows_one_click_smoke.ps1
       - name: Render Windows 2s smoke
