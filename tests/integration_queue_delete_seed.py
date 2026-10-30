@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory(prefix='cf-delete-seed-') as tmp:
         print('PASS deleted job hidden after controller restart and durable journal retained')
         # Previously deleted jobs from older ChordFlow releases must also be hidden.
         old_journal = work / 'jobs' / 'old-deleted-fixture.properties'
-        old_journal.write_text('state=DELETED\\nseed=42\\nmode=flow\\nattempts=0\\n')
+        old_journal.write_text('state=DELETED\nseed=42\nmode=flow\nattempts=0\n')
         assert 'old-deleted-fixture' not in jobs()
         print('PASS historical DELETED jobs are hidden from the API immediately')
 
