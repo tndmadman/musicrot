@@ -48,12 +48,10 @@ echo Use DRAIN in the dashboard before stopping production.
 echo.
 rem Start a short-lived companion that waits for readiness, launches one worker
 rem if needed, and opens the default browser. It never starts a second controller.
+rem CMD START can preserve a previous command's errorlevel even when it succeeds.
+rem The prior controller-health probe intentionally returns 1 on a fresh startup.
+rem Therefore do not interpret a stale ERRORLEVEL as a failed START.
 start "ChordFlow Windows Startup" /min powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-companion.ps1"
-if errorlevel 1 (
-  echo ERROR: Could not launch ChordFlow startup companion.
-  pause
-  exit /b 1
-)
 
 rem Like AutoNewsRoller, the controller runs in the launcher's foreground.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-controller.ps1"
