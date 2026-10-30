@@ -38,6 +38,13 @@ public final class Music {
      * Chord snapshots are derived from exact sounding notes, so the legacy pitch QA
      * still applies while separate harmony events preserve long chords and guitar shapes. */
     public static Composition generate(long seed,int seconds,String mode,String theme){
+        return MusicV4.generate(seed,seconds,mode,theme);
+    }
+    public static Composition generate(long seed,int seconds,String mode,String theme,String style){
+        return MusicV4.generate(seed,seconds,mode,theme,style);
+    }
+    /** Historical generator retained only for diagnostic comparisons, never used for new jobs. */
+    private static Composition generateLegacy(long seed,int seconds,String mode,String theme){
         if(seconds<2||seconds>180)throw new IllegalArgumentException("DURATION_OUT_OF_RANGE");
         if(!Set.of("flow","guitar").contains(mode))throw new IllegalArgumentException("INVALID_MODE");
         Random r=new Random(seed);
