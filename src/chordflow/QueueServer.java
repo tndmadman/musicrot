@@ -15,6 +15,7 @@ public final class QueueServer {
     private final Path root,dir;private volatile boolean paused=false,draining=false;
     private static final long LEASE_MS=120_000;
     private static final SecureRandom RANDOM_SEEDS=new SecureRandom();
+    private static final Set<String> MUSIC_STYLES=Set.of("auto","lofi","ambient","pop","rock","funk","electronic","jazz","cinematic");
     private QueueServer(Path root)throws IOException{this.root=root.toAbsolutePath();dir=this.root.resolve("jobs");Files.createDirectories(dir);Files.createDirectories(this.root.resolve("output"));Path state=this.root.resolve("control.properties");if(Files.exists(state)){Properties p=new Properties();try(InputStream in=Files.newInputStream(state)){p.load(in);}paused=Boolean.parseBoolean(p.getProperty("paused"));draining=Boolean.parseBoolean(p.getProperty("draining"));}}
     private synchronized void control()throws IOException{Properties p=new Properties();p.setProperty("paused",Boolean.toString(paused));p.setProperty("draining",Boolean.toString(draining));Path tmp=Files.createTempFile(root,".control-",".tmp");try(OutputStream out=Files.newOutputStream(tmp)){p.store(out,"queue control");}Files.move(tmp,root.resolve("control.properties"),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);}
     private record Job(String id,Properties p){}
@@ -22,14 +23,14 @@ public final class QueueServer {
         List<Job> out=new ArrayList<>();try(var ls=Files.list(dir)){for(Path f:ls.filter(x->x.toString().endsWith(".properties")).sorted().toList()){Properties p=new Properties();try(InputStream in=Files.newInputStream(f)){p.load(in);}out.add(new Job(f.getFileName().toString().replace(".properties",""),p));}}return out;
     }
     private synchronized void save(Job j)throws IOException{Path tmp=Files.createTempFile(dir,".job-",".tmp");try(OutputStream out=Files.newOutputStream(tmp)){j.p.store(out,"ChordFlow durable job");}Files.move(tmp,dir.resolve(j.id+".properties"),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);}
-    private synchronized List<String> enqueue(int count,long seed,int seconds,String mode,String theme,int width,int height,String encoder,String instrument,boolean randomSeeds)throws IOException{
-        if(count<1||count>100||seconds<2||seconds>180||!Set.of("flow","guitar").contains(mode)||!Set.of("noir","paper","olive","gold","blue","violet").contains(theme)||!(width==720&&height==1280||width==1080&&height==1920)||!Set.of("auto","x264","nvenc").contains(encoder)||!Composition.PRESETS.contains(instrument))throw new IllegalArgumentException("BAD_JOB_CONFIG");
+    private synchronized List<String> enqueue(int count,long seed,int seconds,String mode,String theme,int width,int height,String encoder,String instrument,boolean randomSeeds,String musicStyle)throws IOException{
+        if(count<1||count>100||seconds<2||seconds>180||!Set.of("flow","guitar").contains(mode)||!Set.of("noir","paper","olive","gold","blue","violet").contains(theme)||!(width==720&&height==1280||width==1080&&height==1920)||!Set.of("auto","x264","nvenc").contains(encoder)||!Composition.PRESETS.contains(instrument)||!MUSIC_STYLES.contains(musicStyle))throw new IllegalArgumentException("BAD_JOB_CONFIG");
         if(!randomSeeds){try{Math.addExact(seed,count-1);}catch(ArithmeticException ex){throw new IllegalArgumentException("SEED_RANGE_OVERFLOW",ex);}}
         Set<Long> usedSeeds=new HashSet<>();
         List<String> ids=new ArrayList<>();for(int i=0;i<count;i++){
             long jobSeed=randomSeeds?RANDOM_SEEDS.nextLong()&((1L<<53)-1):seed+i;
             if(randomSeeds){while(!usedSeeds.add(jobSeed))jobSeed=RANDOM_SEEDS.nextLong()&((1L<<53)-1);}
-            String id=UUID.randomUUID().toString();Properties p=new Properties();p.setProperty("seed",Long.toString(jobSeed));p.setProperty("randomSeed",Boolean.toString(randomSeeds));p.setProperty("seconds",Integer.toString(seconds));p.setProperty("mode",mode);p.setProperty("theme",theme);p.setProperty("width",String.valueOf(width));p.setProperty("height",String.valueOf(height));p.setProperty("encoder",encoder);p.setProperty("instrument",instrument);p.setProperty("state","QUEUED");p.setProperty("attempts","0");p.setProperty("updated",Long.toString(System.currentTimeMillis()));save(new Job(id,p));ids.add(id);}return ids;
+            String id=UUID.randomUUID().toString();Properties p=new Properties();p.setProperty("seed",Long.toString(jobSeed));p.setProperty("randomSeed",Boolean.toString(randomSeeds));p.setProperty("seconds",Integer.toString(seconds));p.setProperty("mode",mode);p.setProperty("theme",theme);p.setProperty("width",String.valueOf(width));p.setProperty("height",String.valueOf(height));p.setProperty("encoder",encoder);p.setProperty("instrument",instrument);p.setProperty("requestedMusicStyle",musicStyle);p.setProperty("state","QUEUED");p.setProperty("attempts","0");p.setProperty("updated",Long.toString(System.currentTimeMillis()));save(new Job(id,p));ids.add(id);}return ids;
     }
     private synchronized void recover()throws IOException{for(Job j:all())if(j.p.getProperty("state").equals("RUNNING")&&Long.parseLong(j.p.getProperty("leaseUntil","0"))<System.currentTimeMillis()){j.p.setProperty("state",Integer.parseInt(j.p.getProperty("attempts","0"))>=3?"FAILED":"QUEUED");j.p.setProperty("error","WORKER_LEASE_EXPIRED");j.p.remove("leaseToken");j.p.remove("worker");save(j);}}
     private synchronized Job claim(String worker)throws IOException{
@@ -45,6 +46,20 @@ public final class QueueServer {
      * expired jobs do not block later production, and synchronized reservations
      * prevent concurrent workers from claiming the same composition.
      */
+    private synchronized String musicStyle(String id,String worker,String token)throws IOException{
+        Job job=get(id);
+        if(!validLease(job,worker,token))return "STALE_LEASE";
+        return job.p.getProperty("requestedMusicStyle","auto");
+    }
+    private synchronized String resetMusicHistory()throws IOException{
+        for(Job job:all())if("RUNNING".equals(job.p.getProperty("state"))||
+            "QUEUED".equals(job.p.getProperty("state")))
+            throw new IOException("DRAIN_QUEUE_BEFORE_MUSIC_HISTORY_RESET");
+        for(Job job:all())if(job.p.containsKey("musicFingerprint")){
+            job.p.remove("musicFingerprint");save(job);
+        }
+        return "MUSIC_HISTORY_RESET";
+    }
     private synchronized String reserveMusic(String id,String worker,String token,String encoded,int variation,
                                               String style,int leadRepeats,int grooveRepeats)throws IOException{
         Job job=get(id);
@@ -180,10 +195,12 @@ public final class QueueServer {
                     if(!Set.of("true","false").contains(randomFlag))throw new IllegalArgumentException("BAD_RANDOM_SEED_FLAG");
                     boolean randomSeeds=Boolean.parseBoolean(randomFlag);
                     long seed=randomSeeds?0L:Long.parseLong(arg(q,"seed","1"));
-                    response="{\"ids\":\""+String.join(",",store.enqueue(Integer.parseInt(arg(q,"count","1")),seed,Integer.parseInt(arg(q,"seconds","60")),arg(q,"mode","flow"),arg(q,"theme","noir"),Integer.parseInt(arg(q,"width","1080")),Integer.parseInt(arg(q,"height","1920")),arg(q,"encoder","auto"),arg(q,"instrument","warm-pad"),randomSeeds))+"\"}";
+                    response="{\"ids\":\""+String.join(",",store.enqueue(Integer.parseInt(arg(q,"count","1")),seed,Integer.parseInt(arg(q,"seconds","60")),arg(q,"mode","flow"),arg(q,"theme","noir"),Integer.parseInt(arg(q,"width","1080")),Integer.parseInt(arg(q,"height","1920")),arg(q,"encoder","auto"),arg(q,"instrument","warm-pad"),randomSeeds,arg(q,"style","auto")))+"\"}";
                 }
                 case "/api/claim"->{Job j=store.claim(arg(q,"worker","worker"));response=j==null?"NONE":j.id+"|"+j.p.getProperty("seed")+"|"+j.p.getProperty("seconds")+"|"+j.p.getProperty("mode")+"|"+j.p.getProperty("theme")+"|"+j.p.getProperty("width","720")+"|"+j.p.getProperty("height","1280")+"|"+j.p.getProperty("leaseToken")+"|"+j.p.getProperty("encoder","auto")+"|"+j.p.getProperty("instrument","warm-pad");}
                 case "/api/heartbeat"->response=store.heartbeat(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""));
+                case "/api/music-style"->response=store.musicStyle(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""));
+                case "/api/music-history-reset"->response=store.resetMusicHistory();
                 case "/api/music-reserve"->response=store.reserveMusic(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""),
                     arg(q,"signature",""),Integer.parseInt(arg(q,"variation","0")),arg(q,"style","unknown"),
                     Integer.parseInt(arg(q,"leadRepeats","0")),Integer.parseInt(arg(q,"grooveRepeats","0")));
@@ -215,12 +232,14 @@ public final class QueueServer {
                 }catch(Exception e){System.err.println("HEARTBEAT_FAILED "+e);}
             },2,2,TimeUnit.SECONDS);
             try{
+                String requestedStyle=post(client,url+"/api/music-style?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token));
+                if(!MUSIC_STYLES.contains(requestedStyle))throw new IOException("UNSUPPORTED_STYLE_OR_STALE_LEASE");
                 Composition c=null;
                 // Repair a collision by composing a new, coherent variant. Never
                 // scramble notes, change only metadata or render before reservation.
                 for(int variation=0;variation<6;variation++){
                     Composition candidate=MusicV4.generate(Long.parseLong(v[1]),Integer.parseInt(v[2]),v[3],v[4],
-                        "auto",variation).withInstrument(v[9]);
+                        requestedStyle,variation).withInstrument(v[9]);
                     MusicQuality.Report quality=MusicQuality.analyze(candidate);
                     String signature=MusicFingerprint.of(candidate).encode();
                     String style=candidate.title.split(" ")[1];
@@ -253,13 +272,14 @@ public final class QueueServer {
         <!doctype html><html><head><meta charset="utf-8"><title>ChordFlow Command Center</title><style>
         body{font:15px system-ui;background:#080d1b;color:#dae4ff;max-width:1100px;margin:32px auto}button,input,select{background:#1a2440;border:1px solid #4e6386;border-radius:6px;color:white;padding:8px;margin:4px}button{cursor:pointer}table{border-collapse:collapse;width:100%}td,th{padding:12px;text-align:left;border-bottom:1px solid #34415e}.small{color:#8ea3c5}h1{letter-spacing:1px}
         </style></head><body><h1>ChordFlow / Command Center</h1><p class="small">Local-first original harmonic video production · Independent of AutoNewsRoller</p>
-        <section>Batch count <input id="count" type="number" min="1" max="100" value="2"> Seed <input id="seed" type="number" value="101" disabled> <label style="white-space:nowrap"><input id="randomSeed" type="checkbox" checked onchange="updateSeedMode()"> Random seed for every video</label> Seconds <input id="seconds" type="number" min="2" max="180" value="60"><select id="mode"><option>flow</option><option>guitar</option></select><select id="theme"><option value="noir">Noir Studio</option><option value="paper">Ivory Score</option><option value="olive">Analog Olive</option></select><select id="resolution"><option value="1080">1080p final</option><option value="720">720p preview</option></select><select id="encoder"><option>auto</option><option>x264</option><option>nvenc</option></select><select id="instrument"><option>warm-pad</option><option>soft-keys</option><option>nylon-pluck</option><option>glass</option><option>layered</option></select><button onclick="enqueue()">Queue batch</button></section>
-        <section><button onclick="call('/api/pause')">Pause claims</button><button onclick="call('/api/resume')">Resume</button><button onclick="call('/api/drain')">Drain</button><span id="summary"></span></section>
+        <section>Batch count <input id="count" type="number" min="1" max="100" value="2"> Seed <input id="seed" type="number" value="101" disabled> <label style="white-space:nowrap"><input id="randomSeed" type="checkbox" checked onchange="updateSeedMode()"> Random seed for every video</label> Seconds <input id="seconds" type="number" min="2" max="180" value="60"><select id="mode"><option>flow</option><option>guitar</option></select><select id="style"><option value="auto">Auto music style</option><option value="lofi">Lo-fi</option><option value="ambient">Ambient</option><option value="pop">Pop instrumental</option><option value="rock">Rock</option><option value="funk">Funk</option><option value="electronic">Electronic</option><option value="jazz">Jazz-influenced</option><option value="cinematic">Cinematic</option></select><select id="theme"><option value="noir">Noir Studio</option><option value="paper">Ivory Score</option><option value="olive">Analog Olive</option></select><select id="resolution"><option value="1080">1080p final</option><option value="720">720p preview</option></select><select id="encoder"><option>auto</option><option>x264</option><option>nvenc</option></select><select id="instrument"><option>warm-pad</option><option>soft-keys</option><option>nylon-pluck</option><option>glass</option><option>layered</option></select><button onclick="enqueue()">Queue batch</button></section>
+        <section><button onclick="call('/api/pause')">Pause claims</button><button onclick="call('/api/resume')">Resume</button><button onclick="call('/api/drain')">Drain</button><button onclick="resetMusicHistory()">Reset music history</button><span id="summary"></span></section>
         <section id="preview" style="display:none;margin:20px 0"><h2>Output preview</h2><video id="video" controls playsinline style="max-height:640px;max-width:100%"></video></section>
         <table><thead><tr><th>Job</th><th>Seed</th><th>Mode</th><th>State</th><th>Attempts</th><th>Output / error</th><th>Action</th></tr></thead><tbody id="jobs"></tbody></table>
         <script>async function call(url){await fetch(url,{method:'POST'});refresh()}
         function updateSeedMode(){document.getElementById('seed').disabled=document.getElementById('randomSeed').checked}
-        async function enqueue(){const p=new URLSearchParams();for(const k of ['count','seconds','mode','theme','encoder','instrument'])p.set(k,document.getElementById(k).value);const random=document.getElementById('randomSeed').checked;p.set('randomSeed',String(random));if(!random)p.set('seed',document.getElementById('seed').value);const width=Number(document.getElementById('resolution').value);p.set('width',width);p.set('height',width===1080?1920:1280);await call('/api/enqueue?'+p)}
+        async function enqueue(){const p=new URLSearchParams();for(const k of ['count','seconds','mode','style','theme','encoder','instrument'])p.set(k,document.getElementById(k).value);const random=document.getElementById('randomSeed').checked;p.set('randomSeed',String(random));if(!random)p.set('seed',document.getElementById('seed').value);const width=Number(document.getElementById('resolution').value);p.set('width',width);p.set('height',width===1080?1920:1280);await call('/api/enqueue?'+p)}
+        async function resetMusicHistory(){if(!confirm('Reset all musical fingerprints? Deleted music can then be generated again. All queued and running jobs must finish or be cancelled first.'))return;const response=await fetch('/api/music-history-reset',{method:'POST'});const result=await response.text();if(!response.ok)alert('Reset not completed: '+result);refresh()}
         async function deleteVideo(id){if(!confirm('Permanently delete this video and its MIDI, composition JSON, and manifest? This cannot be undone.'))return;const response=await fetch('/api/delete?id='+encodeURIComponent(id),{method:'POST'});const result=await response.text();if(!response.ok||result!=='DELETED')alert('Delete was not completed: '+result);refresh()}
         function htmlEscape(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
         async function refresh(){const data=await(await fetch('/api/jobs')).json();const player=document.getElementById('video'),shown=player.getAttribute('src');if(shown&&!data.jobs.some(j=>j.state==='READY'&&('/api/media/'+encodeURIComponent(j.output))===shown)){player.pause();player.removeAttribute('src');player.load();document.getElementById('preview').style.display='none'}document.getElementById('summary').textContent='  '+(data.paused?'PAUSED':'ACTIVE')+(data.draining?' / DRAINING':'')+' · '+data.jobs.length+' jobs';document.getElementById('jobs').innerHTML=data.jobs.map(j=>`<tr><td>${j.id.substring(0,8)}</td><td>${htmlEscape(j.seedText)}</td><td>${htmlEscape(j.mode)}</td><td>${htmlEscape(j.state)}</td><td>${j.attempts}</td><td>${j.output?`<a style="color:#93cdff" href="#preview" onclick="preview('${j.output}')">Preview MP4</a>`:htmlEscape(j.error)}</td><td>${j.state==='FAILED'?`<button onclick="call('/api/retry?id=${j.id}')">Retry</button>`:''}${['QUEUED','RUNNING'].includes(j.state)?`<button onclick="call('/api/cancel?id=${j.id}')">Cancel</button>`:''}${j.state==='READY'?`<button onclick=\"deleteVideo('${j.id}')\">Delete video</button>`:''}${['DELETING','DELETE_FAILED'].includes(j.state)?`<button onclick=\"deleteVideo('${j.id}')\">Retry delete</button>`:''}</td></tr>`).join('')}
