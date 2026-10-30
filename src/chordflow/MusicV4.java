@@ -105,14 +105,20 @@ public final class MusicV4 {
                 int count=0;for(int f:frets)if(f>=0)count++;
                 pitches=new int[count];for(int i=0,j=0;i<6;i++)if(frets[i]>=0)pitches[j++]=TUNING[i]+frets[i];
             }else{
+                // Construct actual scale-degree triads and seventh chords. In
+                // particular, the minor ii chord is diminished, not major,
+                // and minor sevenths differ from major sevenths.
                 int root=Math.floorMod(p.key()+p.scale()[degree],12);
-                boolean isMinor=p.minor()?degree==0||degree==3||degree==4:degree==1||degree==2||degree==5;
+                int third=p.scale()[(degree+2)%7]+(degree+2>=7?12:0)-p.scale()[degree];
+                int fifth=p.scale()[(degree+4)%7]+(degree+4>=7?12:0)-p.scale()[degree];
+                int seventhInterval=p.scale()[(degree+6)%7]+(degree+6>=7?12:0)-p.scale()[degree];
+                if(p.minor()&&degree==4){third=4;fifth=7;seventhInterval=10;} // harmonic minor V7
                 boolean seventh=p.style().id().equals("jazz")||p.style().id().equals("lofi")&&index%3==0;
-                int third=isMinor?3:4;
-                if(p.minor()&&degree==4)third=4; // harmonic dominant resolving to tonic
-                pitches=seventh?new int[]{36+root,60+root,60+root+third,67+root,60+root+(p.minor()?10:11)}:
-                    new int[]{36+root,60+root,60+root+third,67+root};
-                symbol=ROOTS[root]+(third==3?"m":"")+(seventh?(p.minor()?"7":"maj7"):"");
+                pitches=seventh?new int[]{36+root,60+root,60+root+third,60+root+fifth,60+root+seventhInterval}:
+                    new int[]{36+root,60+root,60+root+third,60+root+fifth};
+                String triad=(third==3&&fifth==6)?"dim":third==3?"m":"";
+                String suffix=seventh?(seventhInterval==11?"maj7":third==3&&fifth==6?"m7b5":"7"):"";
+                symbol=ROOTS[root]+triad+suffix;
             }
             hs.add(new Composition.Harmony(at*p.beat(),duration*p.beat(),symbol,pitches,frets));
             at+=duration;index++;
