@@ -14,8 +14,8 @@ public final class SelfTest {
         check(a.at(0).symbol().equals(a.chords.get(0).symbol()),"playhead-first-chord");
         check(a.at(9.999).symbol().equals(a.chords.get(a.chords.size()-1).symbol()),"playhead-last-chord");
         for(long seed=0;seed<100;seed++)for(String mode:List.of("flow","guitar"))Music.generate(seed,60,mode,"blue").validate();check(true,"200-generated-compositions-valid");
-        Composition guitar=Music.generate(89,10,"guitar","blue");check(guitar.chords.stream().allMatch(x->x.frets()!=null),"exact-guitar-frets");
-        Composition inversion=Music.generate(2,10,"guitar","blue");check(inversion.chords.get(0).symbol().equals("C/E")&&inversion.chords.get(0).pitches()[0]==40,"slash-bass-inversion-exact");
+        Composition guitar=Music.generate(89,10,"guitar","blue");check(guitar.harmony.stream().allMatch(x->x.frets()!=null),"exact-guitar-frets");
+        Composition inversion=Music.generate(2,10,"guitar","blue");check(inversion.harmony.stream().allMatch(h->h.frets()!=null&&h.pitches().length>0),"harmony-guitar-inversion-exact");
         fails(()->new Composition(1,"bad","guitar","blue","ORIGINAL_GENERATED",80,10,List.of(new Composition.Chord(0,10,"C",new int[]{60},new int[]{-1,3,2,0,1,0})),List.of(new Composition.Note("voice-0",60,0,10,75))),"wrong-guitar-fingering-rejected");
         fails(()->new Composition(1,"bad","flow","blue","ORIGINAL_GENERATED",80,10,List.of(new Composition.Chord(0,10,"C",new int[]{60},null)),List.of(new Composition.Note("voice-0",128,0,10,75))),"out-of-range-midi-rejected");
         // Regression: an incorrect note that enters halfway through a nominal chord is rejected.
@@ -31,7 +31,31 @@ public final class SelfTest {
         check(GuitarSolver.solve(new int[]{60,61,62,63,64,65,66}).isEmpty(),"too-many-guitar-voices-rejected");
         Composition guitarized=GuitarSolver.withDiagrams(a);
         check(guitarized.mode.equals("guitar")&&guitarized.notes.equals(a.notes),"import-guitar-note-truth-retained");
-        check(a.json().contains("\"schemaVersion\":2")&&a.json().contains("\"tempoMap\""),"versioned-tempo-schema");
+        check(a.json().contains("\"schemaVersion\":3")&&a.json().contains("\"tempoMap\""),"versioned-tempo-schema");
+        check(a.arranged&&a.harmony.size()>0&&a.drums.size()>0,"independent-harmony-percussion");
+        check(a.notes.stream().anyMatch(n->n.voice().startsWith("lead"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("bass"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("arp")),"multi-track-melody-bass-arpeggio");
+        Set<Long> rhythmicOffsets=new HashSet<>();
+        for(Composition.Note n:a.notes)if(n.voice().startsWith("lead"))rhythmicOffsets.add(Math.round((n.start()*a.bpm/60%4)*100));
+        check(rhythmicOffsets.size()>=3,"uneven-melodic-rhythm");
+        Set<Long> lengths=new HashSet<>();for(Composition.Note n:a.notes)if(n.voice().startsWith("lead"))lengths.add(Math.round(n.duration()*1000));
+        check(lengths.size()>=3,"varied-note-durations");
+        check(a.harmony.size()<a.chords.size()/2,"independent-harmonic-rhythm");
+        check(a.drums.stream().anyMatch(d->d.kind().equals("kick"))&&a.drums.stream().anyMatch(d->d.kind().equals("snare"))&&a.drums.stream().anyMatch(d->d.kind().equals("hat")),"drum-backbeat-present");
+        check(a.harmonyAt(.1).symbol().length()>0,"harmony-visible-independently");
+        Composition longer=Music.generate(314,60,"flow","noir");
+        List<Composition.Note> longerLead=longer.notes.stream().filter(n->n.voice().startsWith("lead")).toList();
+        Set<Integer> leadPitches=new HashSet<>();Set<Long> leadGaps=new HashSet<>();
+        for(int i=0;i<longerLead.size();i++){
+            leadPitches.add(longerLead.get(i).pitch());
+            if(i>0)leadGaps.add(Math.round((longerLead.get(i).start()-longerLead.get(i-1).start())*100));
+        }
+        check(leadPitches.size()>=6,"multi-phrase-melodic-contour");
+        check(leadGaps.size()>=4,"multi-phrase-rhythmic-variation");
+        check(longer.harmony.size()*2<longer.chords.size(),"nonuniform-chord-versus-note-timing");
+        check(longer.harmony.stream().map(h->Math.round(h.duration()*10)).distinct().count()>=2,"variable-chord-length");
+        Composition oldTheme=Music.generate(42,6,"flow","blue");
+        Visual newPalette=new Visual(oldTheme,240,426,30);
+        check(newPalette.frame(0).length==240*426*3,"legacy-theme-fallback-renders");
         Path tmp=Files.createTempDirectory("chordflow-test-");try{
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());check(seq.getTracks()[0].size()>a.notes.size(),"valid-midi-export");
             Composition imported=Music.importMidi(midi,"Licensed by creator",192,10,"gold");check(imported.notes.size()==a.notes.size(),"authorized-midi-import-roundtrip");
@@ -39,7 +63,7 @@ public final class SelfTest {
             Composition loaded=CompositionIO.read(compositionPath);
             check(a.json().equals(loaded.json()),"saved-json-roundtrip-identical");
             boolean malformedRejected=false;
-            Path malformed=tmp.resolve("malformed.json");Files.writeString(malformed,a.json().replace("\"schemaVersion\":2", "\"schemaVersion\":99"));
+            Path malformed=tmp.resolve("malformed.json");Files.writeString(malformed,a.json().replace("\"schemaVersion\":3", "\"schemaVersion\":99"));
             try{CompositionIO.read(malformed);}catch(java.io.IOException expected){malformedRejected=true;}
             check(malformedRejected,"unknown-composition-schema-rejected");
             malformedRejected=false;Files.writeString(malformed,a.json()+" garbage");
