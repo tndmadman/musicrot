@@ -6,9 +6,9 @@ Windows-first, local, original procedural instrumental visualization engine. Not
 
 ## Windows 10 / 11 quick start
 
-**Double-click start:** install the prerequisites below, then double-click **`Start-ChordFlow.bat`** in the repository root. It builds and runs self-tests, opens separate controller and worker console windows (after checking that the controller is ready), and opens the local dashboard.
+**Recommended one-click launcher:** double-click **`command_center_windows.bat`** in the repository root, just like AutoNewsRoller's Windows command center. It checks JDK 21/FFmpeg, builds and runs tests, starts the controller **in the current console**, starts/reuses a worker in a separate console after the command center is healthy, and opens `http://127.0.0.1:8791` in your default browser. On a repeated launch it reuses the existing controller and worker. No separate manual setup commands or extra services are needed after installing JDK 21 and FFmpeg.
 
-Other root-level shortcuts: `Build-ChordFlow.bat` (build and self-test only), `Start-Controller.bat` (dashboard only), `Start-Worker.bat` (worker only). Do **not** close the controller or worker consoles while processing jobs. See [Windows batch launcher instructions](docs/WINDOWS_BATCH_LAUNCHERS.md).
+`Start-ChordFlow.bat` remains an alias to the same one-click launcher. Optional manual utilities: `Build-ChordFlow.bat`, `Start-Controller.bat`, `Start-Worker.bat`. Do **not** close the controller or worker consoles while processing jobs; use Drain first. See [Windows batch launcher instructions](docs/WINDOWS_BATCH_LAUNCHERS.md).
 
 **PowerShell alternative:**
 
