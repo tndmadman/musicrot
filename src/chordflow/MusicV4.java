@@ -148,6 +148,12 @@ public final class MusicV4 {
     }
     private static void melody(Plan p,List<Composition.Harmony> hs,List<Composition.Note> notes,int seconds){
         int last=65+p.key();
+        // A song owns a small interval theme. Each phrase develops the same
+        // melodic vocabulary, instead of rolling completely unrelated notes.
+        Random motifRng=new Random(p.seed()^0x165667B19E3779F9L);
+        int[] motif=new int[6];
+        for(int m=1;m<motif.length;m++)
+            motif[m]=Math.max(-3,Math.min(3,motif[m-1]+motifRng.nextInt(3)-1));
         int phrase=0;
         // Each two-bar statement gets a distinct rhythm and motif treatment. Return
         // themes reappear as a developed hook, never as an indefinite copied loop.
@@ -173,7 +179,11 @@ public final class MusicV4 {
                         case 3->(int)Math.round(2*Math.sin(x*2*Math.PI));
                         default->(int)Math.round(x*2);
                     };
-                    int degree=Math.floorMod(anchor+shape+(response?-2:0)+(returnHook?1:0)+(r.nextInt(3)-1),7);
+                    int motifShift=motif[(event+(response?2:0))%motif.length];
+                    // Reprise the motif every fourth phrase; answer phrases
+                    // move in a contrasting direction over the new harmony.
+                    int degree=Math.floorMod(anchor+shape+(response?-1:0)
+                        +(returnHook?0:motifShift)+(phrase%4==3?-1:0),7);
                     int target=scaleNote(p,degree,0);
                     if(target<64)target+=12;if(target>83)target-=12;
                     // Keep steps singable; let big leaps land on chord tones.
@@ -196,6 +206,7 @@ public final class MusicV4 {
         }
     }
     private static void accompaniment(Plan p,List<Composition.Harmony> hs,List<Composition.Note> notes,int seconds,Random r){
+        int[] priorVoicing=null;
         for(int i=0;i<hs.size();i++){
             Composition.Harmony h=hs.get(i);
             double from=h.start()/p.beat(),end=(h.start()+h.duration())/p.beat();
@@ -226,13 +237,25 @@ public final class MusicV4 {
                     }
                 }
             }else{
-                int[] chord=h.pitches();
-                for(int c=1;c<chord.length;c++)addNote(notes,"pad-"+c,chord[c],h.start(),
-                    Math.min(h.duration()*.92,seconds-h.start()),48+r.nextInt(18),seconds);
+                int[] chord=h.pitches(),voiced=chord.clone();
+                for(int v=1;v<chord.length;v++){
+                    int target=priorVoicing!=null&&v<priorVoicing.length?priorVoicing[v]:chord[v];
+                    int best=chord[v],distance=Integer.MAX_VALUE;
+                    for(int octave=-2;octave<=1;octave++){
+                        int candidate=chord[v]+12*octave;
+                        if(candidate<53||candidate>82)continue;
+                        int d=Math.abs(candidate-target);
+                        if(d<distance){best=candidate;distance=d;}
+                    }
+                    voiced[v]=best;
+                    addNote(notes,"pad-"+v,best,h.start(),
+                        Math.min(h.duration()*.92,seconds-h.start()),48+r.nextInt(18),seconds);
+                }
+                priorVoicing=voiced;
                 int j=0;
                 for(double at=from+.5;at<end-.17;at+=(p.style().id().equals("ambient")?1.5:.75)){
                     if((j+i)%5==4){j++;continue;}
-                    int pitch=chord[1+(j++%(chord.length-1))];
+                    int pitch=voiced[1+(j++%(voiced.length-1))];
                     addNote(notes,"arp-"+j%3,pitch,at*p.beat(),Math.min(.42,end-at)*p.beat(),
                         40+r.nextInt(29),seconds);
                 }
