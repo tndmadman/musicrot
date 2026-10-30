@@ -9,6 +9,12 @@ public final class Audio {
     public static final int RATE=48000;
     public record Stats(double peak,double rms,double silenceFraction) {}
     public static Stats synth(Composition c,Path wav)throws IOException{
+        String quality=System.getenv().getOrDefault("CHORDFLOW_AUDIO_QUALITY","auto");
+        if(!Set.of("auto","sampled","preview").contains(quality))
+            throw new IOException("CHORDFLOW_AUDIO_QUALITY_INVALID");
+        if(quality.equals("sampled")||(quality.equals("auto")&&SampledAudio.configured()))
+            return SampledAudio.synth(c,wav);
+        // Explicit sampled mode never silently degrades to these procedural preview voices.
         int samples=(int)Math.round(c.duration*RATE);
         if(samples<1)throw new IOException("AUDIO_DURATION_INVALID");
         float[] left=new float[samples],right=new float[samples];
@@ -61,10 +67,32 @@ public final class Audio {
             double env=Math.min(1,elapsed/attack)*Math.min(1,remaining/release);
             double decay=guitar?Math.exp(-2.1*elapsed):arp?Math.exp(-1.5*elapsed):bass?Math.exp(-.33*elapsed):lead?.85+.15*Math.exp(-elapsed):1;
             double tone;
-            if(bass)tone=Math.sin(phase)+.23*Math.sin(2*phase)+.065*Math.sin(3*phase);
-            else if(lead)tone=Math.sin(phase)+.28*Math.sin(2*phase)+.13*Math.sin(3*phase);
-            else if(guitar)tone=Math.sin(phase)+.36*Math.sin(2*phase)+.19*Math.sin(3*phase)+.085*Math.sin(4*phase);
-            else if(arp)tone=Math.sin(phase)+.24*Math.sin(3*phase)+.09*Math.sin(5*phase);
+            if(bass)tone=switch(preset){
+                case "glass"->Math.sin(phase)+.12*Math.sin(3*phase);
+                case "layered"->Math.sin(phase)+.32*Math.sin(2*phase)+.08*Math.sin(phase*.998);
+                case "nylon-pluck"->Math.sin(phase)+.14*Math.sin(2*phase);
+                default->Math.sin(phase)+.23*Math.sin(2*phase)+.065*Math.sin(3*phase);
+            };
+            else if(lead)tone=switch(preset){
+                case "glass"->Math.sin(phase+.26*Math.sin(2.01*phase))+.21*Math.sin(4*phase);
+                case "nylon-pluck"->Math.sin(phase)+.45*Math.sin(2*phase)+.23*Math.sin(3*phase);
+                case "layered"->Math.sin(phase)+.27*Math.sin(2*phase)+.09*Math.sin(phase*1.004);
+                case "warm-pad"->Math.sin(phase)+.15*Math.sin(2*phase);
+                default->Math.sin(phase)+.28*Math.sin(2*phase)+.13*Math.sin(3*phase);
+            };
+            else if(guitar)tone=switch(preset){
+                case "glass"->Math.sin(phase)+.31*Math.sin(5*phase);
+                case "layered"->Math.sin(phase)+.48*Math.sin(2*phase)+.20*Math.sin(3*phase)+.12*Math.sin(5*phase);
+                case "warm-pad"->Math.sin(phase)+.12*Math.sin(2*phase);
+                case "soft-keys"->Math.sin(phase)+.24*Math.sin(2*phase)+.12*Math.sin(3*phase);
+                default->Math.sin(phase)+.36*Math.sin(2*phase)+.19*Math.sin(3*phase)+.085*Math.sin(4*phase);
+            };
+            else if(arp)tone=switch(preset){
+                case "glass"->Math.sin(phase+.23*Math.sin(2*phase))+.12*Math.sin(5*phase);
+                case "layered"->Math.sin(phase)+.21*Math.sin(2*phase)+.18*Math.sin(phase*1.003);
+                case "nylon-pluck"->Math.sin(phase)+.37*Math.sin(2*phase)+.17*Math.sin(4*phase);
+                default->Math.sin(phase)+.24*Math.sin(3*phase)+.09*Math.sin(5*phase);
+            };
             else tone=switch(preset){
                 case "soft-keys"->Math.sin(phase)+.38*Math.sin(2*phase)+.14*Math.sin(3*phase);
                 case "nylon-pluck"->Math.sin(phase)+.30*Math.sin(2*phase)+.10*Math.sin(3*phase);
