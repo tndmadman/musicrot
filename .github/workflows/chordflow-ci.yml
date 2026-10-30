@@ -39,10 +39,12 @@ jobs:
         run: |
           cmd.exe /d /c "Build-ChordFlow.bat --no-pause"
           if ($LASTEXITCODE -ne 0) { throw 'Build-ChordFlow.bat failed' }
-          foreach ($path in @('Start-ChordFlow.bat', 'Start-Controller.bat', 'Start-Worker.bat', 'scripts/wait-controller.ps1')) {
+          foreach ($path in @('command_center_windows.bat', 'Start-ChordFlow.bat', 'Start-Controller.bat', 'Start-Worker.bat', 'scripts/controller-health.ps1', 'scripts/start-companion.ps1')) {
             if (-not (Test-Path $path)) { throw "Missing launcher: $path" }
           }
       - run: python tests/integration_queue_v2.py
+      - name: One-click Windows command center + worker end-to-end smoke
+        run: ./tests/windows_one_click_smoke.ps1
       - name: Render Windows 2s smoke
         run: |
           java '-Djava.awt.headless=true' -cp build chordflow.Main render --seed 45 --seconds 2 --mode flow --width 240 --height 426 --encoder x264 --out output
