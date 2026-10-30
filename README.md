@@ -1,18 +1,20 @@
 # ChordFlow (independent implementation)
 
-Windows-first, local, original procedural instrumental visualization engine. Not part of AutoNewsRoller. Java 21 + FFmpeg/FFprobe; no ComfyUI, TTS, external song download, copied artist handle, or soundfont required. The audio is synthesized from the canonical timed note events by ChordFlow's own additive-instrument synthesizer.
+Windows-first, local, original procedural instrumental visualization engine. Not part of AutoNewsRoller. Java 20 or newer + FFmpeg/FFprobe; no ComfyUI, TTS, external song download, copied artist handle, or soundfont required. The audio is synthesized from the canonical timed note events by ChordFlow's own additive-instrument synthesizer.
 
 **Status: functional development build, not production-certification.** Flow and exact six-string guitar modes, deterministic original compositions, MIDI export, licensed MIDI import (restricted subset), persistent local controller/worker queue, in-dashboard seekable MP4 previews, licensed MIDI-to-video rendering, audio QA, full MP4 decode audit, SHA-256 manifests, NVENC attempt with x264 fallback, and Windows setup scripts are implemented. Remaining limitations are below.
 
 ## Windows 10 / 11 quick start
 
-**Recommended one-click launcher:** double-click **`command_center_windows.bat`** in the repository root, just like AutoNewsRoller's Windows command center. It checks JDK 21/FFmpeg, builds and runs tests, starts the controller **in the current console**, starts/reuses a worker in a separate console after the command center is healthy, and opens `http://127.0.0.1:8791` in your default browser. On a repeated launch it reuses the existing controller and worker. No separate manual setup commands or extra services are needed after installing JDK 21 and FFmpeg.
+**Java compatibility:** ChordFlow accepts JDK 20 or newer. The build uses `javac --release 20`, producing Java 20 class files even when you compile on JDK 21+. This avoids the earlier `Expected JDK 21, found javac 20` startup failure. If you switch JDKs, double-click `command_center_windows.bat` again to rebuild. A Java runtime 20+ and matching or newer compiler must be on PATH.
+
+**Recommended one-click launcher:** double-click **`command_center_windows.bat`** in the repository root, just like AutoNewsRoller's Windows command center. It checks JDK 20+/FFmpeg, builds and runs tests, starts the controller **in the current console**, starts/reuses a worker in a separate console after the command center is healthy, and opens `http://127.0.0.1:8791` in your default browser. On a repeated launch it reuses the existing controller and worker. No separate manual setup commands or extra services are needed after installing JDK 20 or newer and FFmpeg.
 
 `Start-ChordFlow.bat` remains an alias to the same one-click launcher. Optional manual utilities: `Build-ChordFlow.bat`, `Start-Controller.bat`, `Start-Worker.bat`. Do **not** close the controller or worker consoles while processing jobs; use Drain first. See [Windows batch launcher instructions](docs/WINDOWS_BATCH_LAUNCHERS.md).
 
 **PowerShell alternative:**
 
-1. Install **JDK 21** (not just JRE), **FFmpeg** including ffprobe; ensure `java`, `javac`, `ffmpeg`, `ffprobe` are on `PATH`. All tools must work in PowerShell.
+1. Install **JDK 20 or newer** (not just JRE), **FFmpeg** including ffprobe; ensure `java`, `javac`, `ffmpeg`, `ffprobe` are on `PATH`. All tools must work in PowerShell.
 2. In PowerShell at the repository root:
 
 ```powershell
@@ -76,7 +78,7 @@ Detailed measured container test results and release limitations: [docs/TEST_REP
 
 ## Windows hardware acceptance (operator-run)
 
-After installing JDK 21 and FFmpeg/ffprobe, run `powershell -ExecutionPolicy Bypass -File scripts/hardware-acceptance.ps1` from the repository root. It runs 33 self-tests and two independent 60s 1080x1920 original renders, records actual wall-clock durations, codec probes and SHA-256 manifests. Use `-SkipFullRender` for a 10-second 720p preflight only. This is an operator-driven acceptance command: **no RTX 3090 or full 20-job 1080p batch has been certified remotely**, and the script never uploads media.
+After installing JDK 20 or newer and FFmpeg/ffprobe, run `powershell -ExecutionPolicy Bypass -File scripts/hardware-acceptance.ps1` from the repository root. It runs 33 self-tests and two independent 60s 1080x1920 original renders, records actual wall-clock durations, codec probes and SHA-256 manifests. Use `-SkipFullRender` for a 10-second 720p preflight only. This is an operator-driven acceptance command: **no RTX 3090 or full 20-job 1080p batch has been certified remotely**, and the script never uploads media.
 ### Conservative exact-guitar solver
 
 `import-midi-render --input owned.mid --rights "Owned by author" --mode guitar` now searches standard-tuning fretboard fingerings matching each **exact MIDI pitch and octave**. Restricts frets to 0–12, fret span to four, and four distinct fretted positions; omitted diagrams are logged as `GUITAR_CHARTS_OMITTED_UNPLAYABLE` while the audio/notes remain unchanged. This is a conservative mathematical solver, not universal human-playability certification. For atypical chords use flow mode or manually review the output. Encoded AAC uses `loudnorm` targeting -15 LUFS, -2.5 dBTP, followed by independent decoded AAC audit.
