@@ -39,6 +39,38 @@ public final class QueueServer {
     private synchronized String heartbeat(String id,String worker,String token)throws IOException{Job j=get(id);if(!validLease(j,worker,token))return "REJECTED";j.p.setProperty("leaseUntil",Long.toString(System.currentTimeMillis()+LEASE_MS));save(j);return "OK";}
     private boolean validLease(Job j,String worker,String token){return j.p.getProperty("state").equals("RUNNING")&&j.p.getProperty("worker","").equals(worker)&&!token.isBlank()&&j.p.getProperty("leaseToken","").equals(token)&&Long.parseLong(j.p.getProperty("leaseUntil","0"))>=System.currentTimeMillis();}
     private synchronized Job get(String id)throws IOException{if(!id.matches("[a-zA-Z0-9-]{1,90}"))throw new IllegalArgumentException("BAD_JOB_ID");Path file=dir.resolve(id+".properties");if(!Files.exists(file))throw new IOException("JOB_NOT_FOUND");Properties p=new Properties();try(InputStream in=Files.newInputStream(file)){p.load(in);}return new Job(id,p);}
+    /**
+     * Controller-owned persistent musical originality ledger. The job journal is
+     * itself the index: deleted READY videos retain their signatures, failed and
+     * expired jobs do not block later production, and synchronized reservations
+     * prevent concurrent workers from claiming the same composition.
+     */
+    private synchronized String reserveMusic(String id,String worker,String token,String encoded,int variation,
+                                              String style,int leadRepeats,int grooveRepeats)throws IOException{
+        Job job=get(id);
+        if(!validLease(job,worker,token))return "STALE_LEASE";
+        if(encoded==null||encoded.length()>400||variation<0||variation>12||
+            style==null||!style.matches("[a-z]{2,20}"))throw new IllegalArgumentException("BAD_MUSIC_RESERVATION");
+        MusicFingerprint.Signature sig=MusicFingerprint.Signature.parse(encoded);
+        for(Job other:all()){
+            if(other.id.equals(id))continue;
+            String state=other.p.getProperty("state","");
+            if(!Set.of("READY","RUNNING","DELETED","DELETING","DELETE_FAILED").contains(state))continue;
+            String saved=other.p.getProperty("musicFingerprint","");
+            if(saved.isBlank())continue;
+            try{
+                if(MusicFingerprint.nearDuplicate(sig,MusicFingerprint.Signature.parse(saved)))return "TOO_SIMILAR";
+            }catch(IllegalArgumentException ex){throw new IOException("CORRUPT_MUSIC_HISTORY",ex);}
+        }
+        job.p.setProperty("musicFingerprint",encoded);
+        job.p.setProperty("musicVersion","4");
+        job.p.setProperty("musicStyle",style);
+        job.p.setProperty("musicVariation",Integer.toString(variation));
+        job.p.setProperty("musicLeadRepeats",Integer.toString(leadRepeats));
+        job.p.setProperty("musicGrooveRepeats",Integer.toString(grooveRepeats));
+        save(job);
+        return "RESERVED";
+    }
     private synchronized String finish(String id,String worker,String token,String filename,String sha,String error)throws Exception{
         Job j=get(id);if(!validLease(j,worker,token))return "STALE_LEASE";
         if(error!=null&&!error.isBlank()){j.p.setProperty("state","FAILED");j.p.setProperty("error",error.substring(0,Math.min(400,error.length())));save(j);return "FAILED";}
@@ -115,7 +147,7 @@ public final class QueueServer {
             return "DELETE_FAILED";
         }
     }
-    private String json()throws IOException{StringBuilder b=new StringBuilder("{\"paused\":"+paused+",\"draining\":"+draining+",\"jobs\":[");boolean first=true;for(Job j:all()){if("DELETED".equals(j.p.getProperty("state")))continue;if(!first)b.append(',');first=false;Properties p=j.p;b.append("{\"id\":\"").append(j.id).append("\",\"state\":\"").append(clean(p.getProperty("state"))).append("\",\"seed\":").append(p.getProperty("seed")).append(",\"seedText\":\"").append(p.getProperty("seed")).append("\",\"mode\":\"").append(clean(p.getProperty("mode"))).append("\",\"attempts\":").append(p.getProperty("attempts")).append(",\"output\":\"").append(clean(p.getProperty("output",""))).append("\",\"error\":\"").append(clean(p.getProperty("error",""))).append("\"}");}return b.append("]}").toString();}
+    private String json()throws IOException{StringBuilder b=new StringBuilder("{\"paused\":"+paused+",\"draining\":"+draining+",\"jobs\":[");boolean first=true;for(Job j:all()){if("DELETED".equals(j.p.getProperty("state")))continue;if(!first)b.append(',');first=false;Properties p=j.p;b.append("{\"id\":\"").append(j.id).append("\",\"state\":\"").append(clean(p.getProperty("state"))).append("\",\"seed\":").append(p.getProperty("seed")).append(",\"seedText\":\"").append(p.getProperty("seed")).append("\",\"mode\":\"").append(clean(p.getProperty("mode"))).append("\",\"style\":\"").append(clean(p.getProperty("musicStyle",""))).append("\",\"musicVariation\":").append(p.getProperty("musicVariation","0")).append(",\"attempts\":").append(p.getProperty("attempts")).append(",\"output\":\"").append(clean(p.getProperty("output",""))).append("\",\"error\":\"").append(clean(p.getProperty("error",""))).append("\"}");}return b.append("]}").toString();}
     private static String clean(String s){return s.replace("\\","/").replace("\"","'").replace("\n"," ").replace("\r"," ");}
     private static Map<String,String> query(String url){Map<String,String> m=new HashMap<>();int index=url.indexOf('?');if(index<0)return m;for(String pair:url.substring(index+1).split("&")){String[] kv=pair.split("=",2);if(kv.length==2)m.put(URLDecoder.decode(kv[0],StandardCharsets.UTF_8),URLDecoder.decode(kv[1],StandardCharsets.UTF_8));}return m;}
     private void media(HttpExchange x,String filename)throws Exception{
@@ -152,6 +184,9 @@ public final class QueueServer {
                 }
                 case "/api/claim"->{Job j=store.claim(arg(q,"worker","worker"));response=j==null?"NONE":j.id+"|"+j.p.getProperty("seed")+"|"+j.p.getProperty("seconds")+"|"+j.p.getProperty("mode")+"|"+j.p.getProperty("theme")+"|"+j.p.getProperty("width","720")+"|"+j.p.getProperty("height","1280")+"|"+j.p.getProperty("leaseToken")+"|"+j.p.getProperty("encoder","auto")+"|"+j.p.getProperty("instrument","warm-pad");}
                 case "/api/heartbeat"->response=store.heartbeat(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""));
+                case "/api/music-reserve"->response=store.reserveMusic(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""),
+                    arg(q,"signature",""),Integer.parseInt(arg(q,"variation","0")),arg(q,"style","unknown"),
+                    Integer.parseInt(arg(q,"leadRepeats","0")),Integer.parseInt(arg(q,"grooveRepeats","0")));
                 case "/api/finish"->response=store.finish(arg(q,"id",""),arg(q,"worker",""),arg(q,"token",""),arg(q,"filename",""),arg(q,"sha",""),arg(q,"error",""));
                 case "/api/retry"->response=store.retry(arg(q,"id",""));
                 case "/api/cancel"->response=store.cancel(arg(q,"id",""));
@@ -180,7 +215,24 @@ public final class QueueServer {
                 }catch(Exception e){System.err.println("HEARTBEAT_FAILED "+e);}
             },2,2,TimeUnit.SECONDS);
             try{
-                Composition c=Music.generate(Long.parseLong(v[1]),Integer.parseInt(v[2]),v[3],v[4]).withInstrument(v[9]);Production.Result result=Production.render(c,out,Integer.parseInt(v[5]),Integer.parseInt(v[6]),30,v[8]);
+                Composition c=null;
+                // Repair a collision by composing a new, coherent variant. Never
+                // scramble notes, change only metadata or render before reservation.
+                for(int variation=0;variation<6;variation++){
+                    Composition candidate=MusicV4.generate(Long.parseLong(v[1]),Integer.parseInt(v[2]),v[3],v[4],
+                        "auto",variation).withInstrument(v[9]);
+                    MusicQuality.Report quality=MusicQuality.analyze(candidate);
+                    String signature=MusicFingerprint.of(candidate).encode();
+                    String style=candidate.title.split(" ")[1];
+                    String result=post(client,url+"/api/music-reserve?id="+encode(job)+"&worker="+encode(id)+
+                        "&token="+encode(token)+"&signature="+encode(signature)+"&variation="+variation+
+                        "&style="+encode(style)+"&leadRepeats="+quality.repeatedMelodyWindows()+
+                        "&grooveRepeats="+quality.repeatedGrooveWindows());
+                    if(result.equals("RESERVED")){c=candidate;break;}
+                    if(!result.equals("TOO_SIMILAR"))throw new IOException("MUSIC_RESERVATION_FAILED: "+result);
+                }
+                if(c==null)throw new IOException("MUSIC_TOO_SIMILAR_AFTER_BOUNDED_RECOMPOSITION");
+                Production.Result result=Production.render(c,out,Integer.parseInt(v[5]),Integer.parseInt(v[6]),30,v[8]);
                 if(revoked.get()||Thread.currentThread().isInterrupted())throw new InterruptedException("LEASE_REVOKED");
                 String finalState=post(client,url+"/api/finish?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token)+"&filename="+encode(result.video().getFileName().toString())+"&sha="+result.sha256());
                 System.out.println("COMPLETE "+job+" server="+finalState);
