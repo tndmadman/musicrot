@@ -13,17 +13,39 @@ import java.util.concurrent.TimeUnit;
  */
 public final class SampledAudio {
     private SampledAudio() {}
+    /**
+     * Sound bank resolution priority: explicit environment variable, saved
+     * one-click Windows configuration, local bundled-by-user default bank.
+     * No sound assets are downloaded or redistributed by ChordFlow.
+     */
+    public static Path soundbank() throws IOException {
+        String explicit=System.getenv("CHORDFLOW_SOUNDFONT");
+        if(explicit!=null&&!explicit.isBlank())return checkBank(Path.of(explicit));
+        Path configured=Path.of("chordflow-data","soundfont.path");
+        if(Files.isRegularFile(configured)){
+            String selected=Files.readString(configured).trim();
+            if(selected.isBlank())throw new IOException("SOUNDFONT_CONFIGURATION_EMPTY: "+configured);
+            return checkBank(Path.of(selected));
+        }
+        for(Path candidate:List.of(Path.of("soundfonts","default.sf2"),
+            Path.of("soundfonts","GeneralUser-GS.sf2"),Path.of("soundfonts","FluidR3_GM.sf2"))){
+            if(Files.isRegularFile(candidate))return checkBank(candidate);
+        }
+        throw new IOException("REAL_INSTRUMENTS_REQUIRED: no SoundFont configured. "
+            +"Put a properly licensed .sf2 at soundfonts/default.sf2, or run scripts/configure-real-instruments.ps1. "
+            +"To deliberately use synthetic preview audio only, set CHORDFLOW_AUDIO_QUALITY=preview.");
+    }
+    private static Path checkBank(Path value) throws IOException {
+        Path path=value.toAbsolutePath().normalize();
+        if(!Files.isRegularFile(path)||!path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".sf2"))
+            throw new IOException("SOUNDFONT_NOT_FOUND_OR_INVALID: "+path);
+        return path;
+    }
     public static boolean configured(){
-        String bank=System.getenv("CHORDFLOW_SOUNDFONT");
-        return bank!=null&&!bank.isBlank();
+        try{return soundbank()!=null;}catch(IOException e){return false;}
     }
     public static Audio.Stats synth(Composition c,Path wav)throws IOException{
-        String bank=System.getenv("CHORDFLOW_SOUNDFONT");
-        if(bank==null||bank.isBlank())throw new IOException(
-            "SOUNDFONT_NOT_CONFIGURED: set CHORDFLOW_SOUNDFONT to a licensed .sf2 file");
-        Path sf=Path.of(bank).toAbsolutePath();
-        if(!Files.isRegularFile(sf)||!sf.toString().toLowerCase(Locale.ROOT).endsWith(".sf2"))
-            throw new IOException("SOUNDFONT_NOT_FOUND: "+sf);
+        Path sf=soundbank();
         String executable=System.getenv().getOrDefault("CHORDFLOW_FLUIDSYNTH","fluidsynth");
         Path work=Files.createTempDirectory("chordflow-sf2-");
         try{
