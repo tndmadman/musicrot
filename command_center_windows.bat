@@ -19,7 +19,7 @@ rem Fail closed: never launch a worker if Java, FFmpeg, build or self-tests fail
 call "%~dp0Build-ChordFlow.bat" --no-pause
 if errorlevel 1 (
   echo.
-  echo STARTUP BLOCKED: Install JDK 21 and FFmpeg / FFprobe and check errors above.
+  echo STARTUP BLOCKED: Build or self-tests failed. Java 20+ and FFmpeg / FFprobe are required. See the specific error above.
   pause
   exit /b 1
 )
