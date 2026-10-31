@@ -1,5 +1,53 @@
 # ChordFlow V4 composition branch — implementation and operating notes
 
+## V5 — style-coherent ensembles (supersedes independent instrument mixing)
+
+**Root cause:** V4 picked each General MIDI part independently: lead from one
+array, bass from another, chord pad from a third and arpeggio from a fourth.
+The result could be a musically inappropriate pile of sounds even though each
+instrument was a valid GM patch. It also generated every backing part without
+considering whether the ensemble needed that part.
+
+**Current workflow:** A song first chooses a complete, vetted band from
+`EnsembleCatalog.java`, constrained by its music style and optional timbral
+preference. Examples include piano + acoustic bass + slow strings for cinematic,
+electric guitar + picked bass + organ for rock, Rhodes + finger bass + clavinet
+for funk, acoustic jazz piano trios, and warm synth bass/pad/lead combinations
+for electronic. The new dashboard defaults to **Auto ensemble (genre-matched)**.
+Other instrument choices filter the catalog by texture family *within the chosen
+style* rather than swapping one random lead over unrelated accompaniment.
+
+Selection is deterministic for seed + music style + variation + preference.
+The coherent band's lead, bass, pad and arpeggio programs are selected **as a
+single unit**. Optional pad/arp roles are not created when the chosen band
+doesn't include them. Backing behavior follows each band's intended use:
+sustained strings/pads, short keyboard chord comping, plucked figures or sparse
+harmonic space. This avoids forcing a busy pad AND arpeggio under every melody.
+
+In guitar mode, actual fretted guitar notes are retained and guitar-compatible
+patches are chosen for both guitar and lead, with a complementary bass.
+
+No automated clap/drum/percussion track is present (V4.3 remains in force).
+The visual beat cue still follows exact audible note-on times. Real sampled
+instruments continue through the operator-configured SoundFont and FluidSynth.
+
+**Compatibility:** Newly created composition titles include the explicit
+`ensemble-v5` marker before the terminal `variation N`. This ensures
+composition JSON replays reconstruct the same exact GM patch assignments.
+Previously rendered/saved V4 compositions without the marker keep their old
+MIDI program choices; imported licensed MIDI remains unaffected.
+
+Java self-tests verify all eight genres, every preference family, fixed-style
+seed variety, deterministic catalog selection, no unwanted extra MIDI roles,
+actual MIDI PROGRAM_CHANGE mappings, and no generated percussion.
+This confirms valid role assignments and diverse ensembles, not professional
+listening-quality certification.
+
+**Operator:** Choose Music style explicitly (rather than Auto) to keep a
+consistent genre across a batch, leave Ensemble at Auto to get varied but
+compatible bands, and enable Random seed per video.
+
+
 ## V4.3 — automatic percussion generator removed
 
 **Current behavior:** New generated songs have **no automatically added kick,
