@@ -208,10 +208,7 @@ public final class Music {
         if(!c.drums.isEmpty()){
             Track drums=seq.createTrack();
             for(Composition.Drum hit:c.drums){
-                int pitch=switch(hit.kind()){
-                    case "kick"->36;case "snare"->38;case "hat"->42;case "open-hat"->46;
-                    default->throw new IllegalArgumentException("UNKNOWN_PERCUSSION");
-                };
+                int pitch=DrumComposer.gmPitch(c,hit);
                 long tick=Math.round(c.beatAtSeconds(hit.start())*960);
                 long end=tick+Math.max(1,Math.round(.08*c.bpm/60*960));
                 drums.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON,9,pitch,hit.velocity()),tick));
