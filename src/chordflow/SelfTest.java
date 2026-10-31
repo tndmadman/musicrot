@@ -173,6 +173,13 @@ public final class SelfTest {
             Music.writeMidi(instrumentsOnly,instrumentMidi);
             Sequence midi=MidiSystem.getSequence(instrumentMidi.toFile());
             Map<String,Integer> expectedHits=new HashMap<>(),actualHits=new HashMap<>();
+            Set<Integer> expectedPrograms=new HashSet<>(),actualPrograms=new HashSet<>();
+            Set<String> existingRoles=new HashSet<>();
+            for(Composition.Note n:instrumentsOnly.notes){
+                String role=n.voice().split("-")[0];
+                if(existingRoles.add(role))
+                    expectedPrograms.add(SongArrangement.gmProgram(instrumentsOnly,role));
+            }
             for(Composition.Note n:instrumentsOnly.notes){
                 int lane=Visual.instrumentRhythmLane(n.voice());
                 check(lane>=0&&lane<=2,"instrument-onset-cue-lane-"+n.voice());
@@ -183,14 +190,19 @@ public final class SelfTest {
             long percussionEvents=0;
             for(Track track:midi.getTracks())for(int i=0;i<track.size();i++){
                 MidiEvent me=track.get(i);
-                if(me.getMessage() instanceof ShortMessage sm&&
-                    sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0){
-                    if(sm.getChannel()==9)percussionEvents++;
-                    else actualHits.merge(me.getTick()+"@"+sm.getData1(),1,Integer::sum);
+                if(me.getMessage() instanceof ShortMessage sm){
+                    if(sm.getCommand()==ShortMessage.PROGRAM_CHANGE)
+                        actualPrograms.add(sm.getData1());
+                    if(sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0){
+                        if(sm.getChannel()==9)percussionEvents++;
+                        else actualHits.merge(me.getTick()+"@"+sm.getData1(),1,Integer::sum);
+                    }
                 }
             }
             check(percussionEvents==0&&actualHits.equals(expectedHits),
                 "rhythm-cue-matches-audible-notes-no-channel-10");
+            check(actualPrograms.equals(expectedPrograms),
+                "actual-exported-midi-uses-only-selected-compatible-ensemble");
             // Historical saved compositions with real drum events still replay.
             Path archivedMidi=Files.createTempFile("chordflow-legacy-midi",".mid");
             try{
