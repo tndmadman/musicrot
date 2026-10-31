@@ -189,7 +189,9 @@ public final class Music {
             if(index>=channels.length)throw new IllegalArgumentException("MIDI_TOO_MANY_INSTRUMENTS");
             int channel=channels[index++];
             Track track=seq.createTrack();
-            int patch=gmProgram(lane.getKey(),c.instrumentPreset,c.mode);
+            int patch=SongArrangement.hasGeneratedIdentity(c)
+                ?SongArrangement.gmProgram(c,lane.getKey())
+                :gmProgram(lane.getKey(),c.instrumentPreset,c.mode);
             track.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE,channel,patch,0),0));
             List<MidiEvent> events=new ArrayList<>();
             for(Composition.Note n:lane.getValue()){
