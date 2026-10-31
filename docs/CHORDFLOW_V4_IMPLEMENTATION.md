@@ -100,3 +100,49 @@ This branch does **not** yet deliver the entirety of the proposed V4 specificati
 - No copyright originality certification is possible using fingerprints alone.
 
 Those limitations must be resolved or explicitly accepted before claiming a full production-grade audio overhaul.
+
+## V4.1 per-seed arrangement identity — same musical theme, different songs
+
+The previous V4 composer changed melody and drum event details but used the same
+root/fifth bass on two-beat intervals and a fixed repeating 0.75-beat arpeggiator
+on every song. Several different seeds consequently sounded nearly identical.
+
+V4.1 adds SongArrangement.java, a deterministic arrangement plan selected from
+the seed, chosen music style and variation number. The user's selected music
+style remains the genre constraint; the visual theme (noir, paper, olive) and
+guitar/flow mode remain unchanged.
+
+Each song selects independently:
+- one of seven drum groove identities, with style-appropriate kick and percussion,
+- one of six bass-writing approaches (not one root/fifth template),
+- one of six accompaniment strategies (sustains, stabs, offbeat comping,
+  rolling arpeggio, spacious bed and answering phrases),
+- one of five melodic rhythm grammars,
+- one of four song-form layouts for longer compositions, and
+- one of six curated, General MIDI sampled-instrument palettes.
+
+Longer videos get musical sections with lower-energy openings, contrast between
+verses and hooks, an occasional breakdown, and restrained endings. Short clips
+skip artificial multi-section intros. Both harmony and sound-bank patches remain
+derived from canonical MIDI events, ensuring displayed notes match the recording.
+
+Instrument patches vary with the seed even when the operator chooses the same
+style repeatedly. Sampled instrument palette selection is deterministic from the
+saved composition's seed, style and variation, so render-json replays generate
+the same MIDI patches. Imported compositions and older songs retain the legacy
+GM program selection behavior.
+
+**To keep one theme:** Set Music style explicitly in the dashboard (for example,
+jazz, cinematic or lofi), instead of auto. Different random/manual seeds then
+select different instrument roles, groove, bass, backing and form *inside that
+style*. Auto intentionally permits different musical styles per seed.
+The visual theme is independent and can remain unchanged.
+
+The updated self-test checks at least 24 seeds within each of five fixed
+styles. It checks style preservation plus diversity of full arrangement identities,
+bass onset rhythms, actual drum events and actual GM lead instrument patches.
+These are structural assertions, not a human listening certification.
+
+Limitations: the generator is rule-based, not a trained composer, and its output
+still needs objective audio comparison and subjective human evaluation. Real
+instrument samples require the operator's locally configured SF2 SoundFont.
