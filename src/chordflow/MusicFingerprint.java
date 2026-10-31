@@ -63,10 +63,13 @@ public final class MusicFingerprint {
     }
     public static boolean nearDuplicate(Signature a,Signature b){
         if(a.melody().equals(b.melody()))return true;
-        if(a.drums().equals(b.drums())&&a.harmony().equals(b.harmony())&&a.structure().equals(b.structure()))return true;
-        // A near duplicate must match multiple independent musical dimensions.
+        // A different melody does NOT excuse a copied drum arrangement. This
+        // was the principal weakness of V4.1's cross-song rejection policy.
+        if(a.drums().equals(b.drums()))return true;
         int m=Long.bitCount(a.melodySketch()^b.melodySketch());
         int d=Long.bitCount(a.drumsSketch()^b.drumsSketch());
+        // Extremely close multi-bar groove sketches are rejected on their own.
+        if(d<=4)return true;
         return m<=7&&d<=10&&(a.harmony().equals(b.harmony())||a.structure().equals(b.structure()));
     }
     public static String key(Composition c){return of(c).encode();}
