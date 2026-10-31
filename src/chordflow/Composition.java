@@ -113,7 +113,7 @@ public final class Composition {
             }
             if(Math.abs(lastEnd-duration)>1e-6)throw new IllegalArgumentException("HARMONY_TIMELINE_INCOMPLETE");
         }
-        for(Drum d:drums)if(!DrumComposer.known(d.kind())||!Double.isFinite(d.start())||d.start()<0||d.start()>=duration||d.velocity()<1||d.velocity()>127)
+        for(Drum d:drums)if(!Set.of("kick","snare","hat","open-hat","clap","rim","tom","ride","crash").contains(d.kind())||!Double.isFinite(d.start())||d.start()<0||d.start()>=duration||d.velocity()<1||d.velocity()>127)
             throw new IllegalArgumentException("DRUM_INVALID");
         for(Note n:notes)if(n.pitch()<0||n.pitch()>127||n.velocity()<1||n.velocity()>127||n.start()<0||n.duration()<=0||n.start()+n.duration()>duration+0.04||!Double.isFinite(n.start())||!Double.isFinite(n.duration()))throw new IllegalArgumentException("NOTE_INVALID");
         // Validate every interval where the sounding multiset can change, not just chord starts.
