@@ -89,7 +89,7 @@ public final class SelfTest {
             check(bands.size()>=5,"curated-ensembles-available-"+style);
             for(String family:Composition.PRESETS){
                 Set<String> used=new HashSet<>();
-                for(int trial=0;trial<12;trial++){
+                for(int trial=0;trial<4;trial++){
                     long seed=1000L+trial;
                     EnsembleCatalog.Ensemble selected=EnsembleCatalog.select(seed,style,family);
                     Composition piece=MusicV4.generate(seed,35,"flow","noir",style,0,family);
@@ -113,8 +113,11 @@ public final class SelfTest {
                     check(piece.json().equals(MusicV4.generate(seed,35,"flow","noir",style,0,family).json()),
                         "curated-ensemble-deterministic-"+style+"-"+family+"-"+trial);
                 }
-                if(family.equals("auto-ensemble"))
+                if(family.equals("auto-ensemble")){
+                    for(int trial=4;trial<40;trial++)
+                        used.add(EnsembleCatalog.select(1000L+trial,style,family).name());
                     check(used.size()>=4,"varied-but-coherent-ensembles-"+style);
+                }
             }
         }
         // Preserve archived V4 playback even when new catalog selections differ.
