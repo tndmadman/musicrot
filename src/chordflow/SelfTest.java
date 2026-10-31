@@ -44,7 +44,7 @@ public final class SelfTest {
         check(guitarized.mode.equals("guitar")&&guitarized.notes.equals(a.notes),"import-guitar-note-truth-retained");
         check(a.json().contains("\"schemaVersion\":3")&&a.json().contains("\"tempoMap\""),"versioned-tempo-schema");
         check(a.arranged&&a.harmony.size()>0&&a.drums.isEmpty(),"arranged-instrumental-no-automatic-percussion");
-        check(a.notes.stream().anyMatch(n->n.voice().startsWith("lead"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("bass"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("arp")),"multi-track-melody-bass-arpeggio");
+        check(a.notes.stream().anyMatch(n->n.voice().startsWith("lead"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("bass"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("pad")||n.voice().startsWith("arp")),"multi-track-melody-bass-curated-accompaniment");
         MusicFingerprint.Signature fingerprint=MusicFingerprint.of(a);
         check(fingerprint.encode().equals(MusicFingerprint.Signature.parse(fingerprint.encode()).encode()),
             "fingerprint-durable-roundtrip");
@@ -81,6 +81,50 @@ public final class SelfTest {
         for(int i=0;i<20;i++)musicalSignatures.add(MusicFingerprint.of(
             MusicV4.generate(i+100,25,"flow","noir","pop")).melody());
         check(musicalSignatures.size()>=18,"same-style-twenty-song-melodic-diversity");
+        // Curated ensembles are selected as one band, never independent
+        // lead/bass/pad/arp random choices. Verify every preset and all styles.
+        check(Composition.PRESETS.contains("auto-ensemble"),"style-matched-ensemble-default-allowed");
+        for(String style:List.of("lofi","ambient","pop","rock","funk","electronic","jazz","cinematic")){
+            List<EnsembleCatalog.Ensemble> bands=EnsembleCatalog.choices(style);
+            check(bands.size()>=5,"curated-ensembles-available-"+style);
+            for(String family:Composition.PRESETS){
+                Set<String> used=new HashSet<>();
+                for(int trial=0;trial<12;trial++){
+                    long seed=1000L+trial;
+                    EnsembleCatalog.Ensemble selected=EnsembleCatalog.select(seed,style,family);
+                    Composition piece=MusicV4.generate(seed,35,"flow","noir",style,0,family);
+                    check(piece.drums.isEmpty()&&
+                        piece.title.contains(" ensemble-v5 ")&&
+                        piece.instrumentPreset.equals(family),
+                        "new-ensemble-format-"+style+"-"+family+"-"+trial);
+                    check(EnsembleCatalog.choices(style).contains(selected),
+                        "ensemble-from-matching-style-"+style+"-"+family+"-"+trial);
+                    check(family.equals("auto-ensemble")||selected.family().equals(family),
+                        "preference-in-style-"+style+"-"+family+"-"+trial);
+                    for(String role:List.of("lead","bass","pad","arp")){
+                        boolean present=piece.notes.stream().anyMatch(n->n.voice().startsWith(role));
+                        check(present==selected.supports(role),
+                            "no-incompatible-extra-parts-"+style+"-"+family+"-"+role+"-"+trial);
+                        if(present)check(SongArrangement.gmProgram(piece,role)==selected.program(role),
+                            "all-midi-patches-from-one-ensemble-"+style+"-"+family+"-"+role+"-"+trial);
+                    }
+                    used.add(selected.name());
+                    // Every generated performance must have a stable MIDI patch map.
+                    check(piece.json().equals(MusicV4.generate(seed,35,"flow","noir",style,0,family).json()),
+                        "curated-ensemble-deterministic-"+style+"-"+family+"-"+trial);
+                }
+                if(family.equals("auto-ensemble"))
+                    check(used.size()>=4,"varied-but-coherent-ensembles-"+style);
+            }
+        }
+        // Preserve archived V4 playback even when new catalog selections differ.
+        Composition oldGenerated=new Composition(a.seed,a.title.replace(" ensemble-v5",""),
+            a.mode,a.theme,a.rights,a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,
+            a.tempoMap,"soft-keys",a.harmony,a.drums,true);
+        check(!oldGenerated.title.contains(" ensemble-v5 ")&&
+            SongArrangement.gmProgram(oldGenerated,"lead")>=0,
+            "legacy-V4-instrument-patch-replay");
+
         // Seed variety is now grounded in actual audible instrument notes.
         // An empty drum track never counts as rhythmic diversity.
         for(String style:List.of("pop","jazz","ambient","electronic","cinematic")){
@@ -208,12 +252,12 @@ public final class SelfTest {
             check(escaped.json().equals(CompositionIO.read(tmp.resolve("escaped.json")).json()),"json-escape-roundtrip");
             Audio.Stats stats=Audio.synth(a,wav);check(stats.rms()>.007&&stats.peak()<.98,"nonsilent-true-synthesis");check(Files.size(wav)>1_000_000,"wav-real-pcm");
             Set<String> instrumentHashes=new HashSet<>();
-            for(String preset:Composition.PRESETS){
+            for(String preset:List.of("warm-pad","soft-keys","nylon-pluck","glass","layered")){
                 Composition pc=a.withInstrument(preset);
                 check(pc.json().contains("\"instrumentPreset\":\""+preset+"\""),"preset-serialized-"+preset);
                 Path pw=tmp.resolve(preset+".wav");Audio.synth(pc,pw);instrumentHashes.add(Production.hash(pw));
             }
-            check(instrumentHashes.size()==Composition.PRESETS.size(),"five-distinct-instrument-timbres");
+            check(instrumentHashes.size()==5,"five-distinct-instrument-timbres");
             Visual v=new Visual(a,240,426,30);byte[] frame=v.frame(0).clone();check(frame.length==240*426*3,"full-raster-frame");check(!java.util.Arrays.equals(frame,v.frame(15)),"motion-is-animated");
             check(Production.hash(wav).length()==64,"sha256-provenance");
             // Independent multi-track, multi-tempo, sustain-pedal MIDI fixture.
