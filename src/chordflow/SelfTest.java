@@ -43,16 +43,25 @@ public final class SelfTest {
         Composition guitarized=GuitarSolver.withDiagrams(a);
         check(guitarized.mode.equals("guitar")&&guitarized.notes.equals(a.notes),"import-guitar-note-truth-retained");
         check(a.json().contains("\"schemaVersion\":3")&&a.json().contains("\"tempoMap\""),"versioned-tempo-schema");
-        check(a.arranged&&a.harmony.size()>0&&a.drums.size()>0,"independent-harmony-percussion");
+        check(a.arranged&&a.harmony.size()>0&&a.drums.isEmpty(),"arranged-instrumental-no-automatic-percussion");
         check(a.notes.stream().anyMatch(n->n.voice().startsWith("lead"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("bass"))&&a.notes.stream().anyMatch(n->n.voice().startsWith("arp")),"multi-track-melody-bass-arpeggio");
         MusicFingerprint.Signature fingerprint=MusicFingerprint.of(a);
         check(fingerprint.encode().equals(MusicFingerprint.Signature.parse(fingerprint.encode()).encode()),
             "fingerprint-durable-roundtrip");
-        MusicFingerprint.Signature copiedBeatWithDifferentLead=new MusicFingerprint.Signature(
+        MusicFingerprint.Signature differentInstrumentOnly=new MusicFingerprint.Signature(
             "0".repeat(64),fingerprint.drums(),"1".repeat(64),"2".repeat(64),
             fingerprint.melodySketch()^0xAAAAAAAAAAAAAAAAL,fingerprint.drumsSketch());
-        check(MusicFingerprint.nearDuplicate(fingerprint,copiedBeatWithDifferentLead),
-            "reject-recycled-drum-beat-even-with-new-melody");
+        check(!MusicFingerprint.nearDuplicate(fingerprint,differentInstrumentOnly),
+            "no-false-duplicate-from-absent-percussion");
+        Composition archivedWithClap=new Composition(a.seed,a.title,a.mode,a.theme,a.rights,
+            a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,a.tempoMap,a.instrumentPreset,
+            a.harmony,List.of(new Composition.Drum("clap",.5,80)),true);
+        MusicFingerprint.Signature withDrum=MusicFingerprint.of(archivedWithClap);
+        MusicFingerprint.Signature copiedBeatWithDifferentLead=new MusicFingerprint.Signature(
+            "0".repeat(64),withDrum.drums(),"1".repeat(64),"2".repeat(64),
+            withDrum.melodySketch()^0xAAAAAAAAAAAAAAAAL,withDrum.drumsSketch());
+        check(MusicFingerprint.nearDuplicate(withDrum,copiedBeatWithDifferentLead),
+            "archived-drum-beat-dedupe-still-works");
 
         Composition sameMusicDifferentSeed=new Composition(98765,a.title,a.mode,a.theme,a.rights,
             a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,a.tempoMap,a.instrumentPreset,a.harmony,a.drums,a.arranged);
@@ -72,87 +81,82 @@ public final class SelfTest {
         for(int i=0;i<20;i++)musicalSignatures.add(MusicFingerprint.of(
             MusicV4.generate(i+100,25,"flow","noir","pop")).melody());
         check(musicalSignatures.size()>=18,"same-style-twenty-song-melodic-diversity");
-        // Across one fixed theme, seed changes must alter actual rhythm,
-        // drum arrangement and sampled instruments, not merely key or tempo.
+        // Seed variety is now grounded in actual audible instrument notes.
+        // An empty drum track never counts as rhythmic diversity.
         for(String style:List.of("pop","jazz","ambient","electronic","cinematic")){
             Set<String> designs=new HashSet<>(),bassPatterns=new HashSet<>(),
-                groovePatterns=new HashSet<>();
+                backingPatterns=new HashSet<>();
             Set<Integer> leadInstruments=new HashSet<>();
             for(int i=0;i<24;i++){
                 long seed=10100+i;
                 Composition song=MusicV4.generate(seed,40,"flow","noir",style);
-                check(song.title.startsWith("Original "+style+" "),
-                    "theme-preserved-"+style+"-"+i);
+                check(song.title.startsWith("Original "+style+" ")&&song.drums.isEmpty(),
+                    "theme-preserved-no-percussion-"+style+"-"+i);
                 designs.add(SongArrangement.identity(seed,style).signature());
                 leadInstruments.add(SongArrangement.gmProgram(song,"lead"));
-                StringBuilder bassRhythm=new StringBuilder(),drumRhythm=new StringBuilder();
-                for(Composition.Note n:song.notes)
-                    if(n.voice().startsWith("bass")&&n.start()<song.bpm*0+8*60/song.bpm)
+                StringBuilder bassRhythm=new StringBuilder(),backingRhythm=new StringBuilder();
+                for(Composition.Note n:song.notes){
+                    if(n.start()>=8*60/song.bpm)continue;
+                    if(n.voice().startsWith("bass"))
                         bassRhythm.append(Math.round(n.start()*song.bpm/60*4)).append(',');
-                for(Composition.Drum d:song.drums)
-                    if(d.start()<8*60/song.bpm)
-                        drumRhythm.append(d.kind()).append('@')
-                            .append(Math.round(d.start()*song.bpm/60*4)).append(',');
-                bassPatterns.add(bassRhythm.toString());groovePatterns.add(drumRhythm.toString());
+                    if(n.voice().startsWith("arp")||n.voice().startsWith("pad"))
+                        backingRhythm.append(n.voice().startsWith("arp")?"A":"P")
+                            .append(Math.round(n.start()*song.bpm/60*4)).append(',');
+                }
+                bassPatterns.add(bassRhythm.toString());
+                backingPatterns.add(backingRhythm.toString());
             }
             check(designs.size()>=21,"unique-arrangement-identities-"+style);
             check(bassPatterns.size()>=4,"seed-specific-bass-rhythm-"+style);
-            check(groovePatterns.size()>=4,"seed-specific-drum-grooves-"+style);
+            check(backingPatterns.size()>=4,"seed-specific-real-instrument-rhythm-"+style);
             check(leadInstruments.size()>=4,"seed-specific-lead-instruments-"+style);
         }
-        // Percussion is now an actual multi-bar musical part: every event must
-        // survive as a sampled GM MIDI drum and a visible lane at the same time.
+        // No generated instrument-only MIDI is allowed to contain any channel
+        // 10 percussion. The new rhythm cue must use the same note-on events
+        // already present on audible, non-percussion MIDI channels.
         for(String style:List.of("lofi","pop","rock","funk","electronic","jazz","cinematic")){
-            Set<String> drumFingerprints=new HashSet<>();
-            Set<String> firstBarPockets=new HashSet<>();
-            for(int song=0;song<18;song++){
-                Composition piece=MusicV4.generate(9000L+song,48,"flow","noir",style);
-                StringBuilder pattern=new StringBuilder(),firstBar=new StringBuilder();
-                boolean gmValid=true,laneValid=true;
-                for(Composition.Drum hit:piece.drums){
-                    int gm=DrumComposer.gmPitch(piece,hit);
-                    gmValid&=gm>=35&&gm<=59;
-                    int lane=Visual.percussionLane(hit.kind());
-                    laneValid&=lane>=0&&lane<=3;
-                    long ticks=Math.round(hit.start()*piece.bpm/60*16);
-                    String token=hit.kind()+"@"+ticks+";";
-                    if(ticks<128)pattern.append(token);
-                    if(ticks<64)firstBar.append(token);
-                }
-                check(gmValid,"percussion-general-midi-"+style+"-"+song);
-                check(laneValid,"percussion-shown-in-lane-"+style+"-"+song);
-                drumFingerprints.add(pattern.toString());
-                firstBarPockets.add(firstBar.toString());
+            for(int i=0;i<8;i++){
+                Composition song=MusicV4.generate(9000L+i,48,"flow","noir",style);
+                check(song.drums.isEmpty(),"no-automatic-drum-events-"+style+"-"+i);
             }
-            check(drumFingerprints.size()>=16,"drum-multi-bar-identity-"+style);
-            check(firstBarPockets.size()>=10,"distinct-first-bar-beats-"+style);
         }
-        check(Visual.percussionLane("kick")!=Visual.percussionLane("snare")&&
-            Visual.percussionLane("snare")!=Visual.percussionLane("hat")&&
-            Visual.percussionLane("hat")!=Visual.percussionLane("crash"),
-            "simultaneous-drum-hits-have-separate-visual-lanes");
-        Composition percussionFixture=MusicV4.generate(722,24,"flow","noir","pop");
-        Path percussionTest=Files.createTempFile("chordflow-drum-midi",".mid");
+        Composition instrumentsOnly=MusicV4.generate(722,24,"flow","noir","pop");
+        Path instrumentMidi=Files.createTempFile("chordflow-instrument-rhythm",".mid");
         try{
-            Music.writeMidi(percussionFixture,percussionTest);
-            Sequence midi=javax.sound.midi.MidiSystem.getSequence(percussionTest.toFile());
-            long emitted=0;Map<String,Integer> expectedHits=new HashMap<>(),actualHits=new HashMap<>();
-            for(Composition.Drum hit:percussionFixture.drums){
-                int p=DrumComposer.gmPitch(percussionFixture,hit);
-                long tick=Math.round(percussionFixture.beatAtSeconds(hit.start())*960);
-                String id=p+"@"+tick;
-                expectedHits.merge(id,1,Integer::sum);
+            Music.writeMidi(instrumentsOnly,instrumentMidi);
+            Sequence midi=MidiSystem.getSequence(instrumentMidi.toFile());
+            Map<String,Integer> expectedHits=new HashMap<>(),actualHits=new HashMap<>();
+            for(Composition.Note n:instrumentsOnly.notes){
+                int lane=Visual.instrumentRhythmLane(n.voice());
+                check(lane>=0&&lane<=2,"instrument-onset-cue-lane-"+n.voice());
+                long tick=Math.round(instrumentsOnly.beatAtSeconds(n.start())*960);
+                String event=tick+"@"+n.pitch();
+                expectedHits.merge(event,1,Integer::sum);
             }
-            for(Track track:midi.getTracks())for(int event=0;event<track.size();event++){
-                MidiEvent me=track.get(event);
-                if(me.getMessage() instanceof ShortMessage sm&&sm.getChannel()==9&&
+            long percussionEvents=0;
+            for(Track track:midi.getTracks())for(int i=0;i<track.size();i++){
+                MidiEvent me=track.get(i);
+                if(me.getMessage() instanceof ShortMessage sm&&
                     sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0){
-                    emitted++;actualHits.merge(sm.getData1()+"@"+me.getTick(),1,Integer::sum);
+                    if(sm.getChannel()==9)percussionEvents++;
+                    else actualHits.merge(me.getTick()+"@"+sm.getData1(),1,Integer::sum);
                 }
             }
-            check(emitted==percussionFixture.drums.size()&&actualHits.equals(expectedHits),
-                "all-percussion-events-are-audible-and-beat-cue-backed");
-        }finally{Files.deleteIfExists(percussionTest);}
+            check(percussionEvents==0&&actualHits.equals(expectedHits),
+                "rhythm-cue-matches-audible-notes-no-channel-10");
+            // Historical saved compositions with real drum events still replay.
+            Path archivedMidi=Files.createTempFile("chordflow-legacy-midi",".mid");
+            try{
+                Music.writeMidi(archivedWithClap,archivedMidi);
+                Sequence archived=MidiSystem.getSequence(archivedMidi.toFile());
+                int oldDrums=0;
+                for(Track track:archived.getTracks())for(int i=0;i<track.size();i++)
+                    if(track.get(i).getMessage() instanceof ShortMessage sm&&
+                        sm.getChannel()==9&&sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0)
+                        oldDrums++;
+                check(oldDrums==1,"archived-percussion-replay-preserved");
+            }finally{Files.deleteIfExists(archivedMidi);}
+        }finally{Files.deleteIfExists(instrumentMidi);}
         MusicQuality.Report quality=MusicQuality.analyze(Music.generate(317,60,"flow","noir"));
         check(quality.leadPhrases()>=4&&quality.distinctMelodyWindows()>=3,
             "multi-section-melodic-development");
@@ -162,7 +166,7 @@ public final class SelfTest {
         Set<Long> lengths=new HashSet<>();for(Composition.Note n:a.notes)if(n.voice().startsWith("lead"))lengths.add(Math.round(n.duration()*1000));
         check(lengths.size()>=3,"varied-note-durations");
         check(a.harmony.size()<a.chords.size()/2,"independent-harmonic-rhythm");
-        check(a.drums.stream().anyMatch(d->d.kind().equals("kick"))&&a.drums.stream().anyMatch(d->d.kind().equals("snare"))&&a.drums.stream().anyMatch(d->d.kind().equals("hat")),"drum-backbeat-present");
+        check(a.drums.isEmpty()&&guitar.drums.isEmpty(),"flow-and-guitar-have-no-extra-drum-layer");
         check(a.harmonyAt(.1).symbol().length()>0,"harmony-visible-independently");
         Composition longer=Music.generate(314,60,"flow","noir");
         List<Composition.Note> longerLead=longer.notes.stream().filter(n->n.voice().startsWith("lead")).toList();
