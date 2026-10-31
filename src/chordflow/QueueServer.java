@@ -224,12 +224,22 @@ public final class QueueServer {
             String job=v[0],token=v[7];System.out.println("CLAIM "+job+" seed="+v[1]);
             Thread renderThread=Thread.currentThread();
             java.util.concurrent.atomic.AtomicBoolean revoked=new java.util.concurrent.atomic.AtomicBoolean(false);
+            java.util.concurrent.atomic.AtomicBoolean heartbeatStopping=new java.util.concurrent.atomic.AtomicBoolean(false);
             ScheduledExecutorService heart=Executors.newSingleThreadScheduledExecutor();
             heart.scheduleAtFixedRate(()->{
                 try{
                     String reply=post(client,url+"/api/heartbeat?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token));
-                    if(!reply.equals("OK")){revoked.set(true);renderThread.interrupt();}
-                }catch(Exception e){System.err.println("HEARTBEAT_FAILED "+e);}
+                    if(!reply.equals("OK")&&!heartbeatStopping.get()){
+                        revoked.set(true);renderThread.interrupt();
+                    }
+                }catch(InterruptedException e){
+                    // shutdownNow() interrupts an in-flight HTTP request during normal
+                    // job cleanup. This is not a lost lease or a failed video.
+                    Thread.currentThread().interrupt();
+                    if(!heartbeatStopping.get())System.err.println("HEARTBEAT_FAILED "+e);
+                }catch(Exception e){
+                    if(!heartbeatStopping.get())System.err.println("HEARTBEAT_FAILED "+e);
+                }
             },2,2,TimeUnit.SECONDS);
             try{
                 String requestedStyle=post(client,url+"/api/music-style?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token));
@@ -261,7 +271,11 @@ public final class QueueServer {
                 // If canceled, finish() returns STALE_LEASE and preserves CANCELLED.
                 try{post(client,url+"/api/finish?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token)+"&error="+encode(e.toString()));}
                 catch(Exception network){System.err.println("FAIL_REPORT_UNDELIVERED "+network);}
-            }finally{heart.shutdownNow();Thread.interrupted();}
+            }finally{
+                heartbeatStopping.set(true);
+                heart.shutdownNow();
+                Thread.interrupted();
+            }
         }
     }
     private static String get(HttpClient c,String uri)throws Exception{HttpRequest req=HttpRequest.newBuilder(URI.create(uri)).timeout(java.time.Duration.ofSeconds(120)).GET().build();HttpResponse<String> r=c.send(req,HttpResponse.BodyHandlers.ofString());if(r.statusCode()!=200)throw new IOException("HTTP_"+r.statusCode()+": "+r.body());return r.body();}
