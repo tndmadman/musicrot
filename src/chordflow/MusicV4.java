@@ -76,11 +76,12 @@ public final class MusicV4 {
         Plan plan=new Plan(planSeed,style,key,minor,tempo,beat,totalBeats,progressions,minor?MINOR:MAJOR,guitar,r.nextInt(7));
         List<Composition.Harmony> harmony=harmonize(plan,r,seconds);
         List<Composition.Note> notes=new ArrayList<>();
-        List<Composition.Drum> drums=new ArrayList<>();
+        // Newly generated songs are entirely instrument-led. No automatic drum events.
+        List<Composition.Drum> drums=List.of();
         melody(plan,harmony,notes,seconds);
         // Preserve exact physical guitar fretting while varying the rhythm section.
         if(guitar)accompaniment(plan,harmony,notes,seconds,r);
-        SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes,drums);
+        SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes);
         notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
         List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
         Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed+" variation "+variation,mode,theme,
@@ -273,64 +274,6 @@ public final class MusicV4 {
             }
         }
     }
-    private static void groove(Plan p,List<Composition.Drum> drums,int seconds){
-        int family=p.style().drumFamily();
-        for(int bar=0;bar*4<p.totalBeats();bar++){
-            Random r=new Random(p.seed()^0x6B8B4567327B23C6L^(bar/2*0xC2B2AE3D27D4EB4FL));
-            double t=4.0*bar;
-            boolean transition=bar>0&&bar%4==3;
-            if(family==1||family==7){
-                if(bar%2==0)addDrum(drums,"kick",t*p.beat(),57+r.nextInt(21),seconds);
-                if(transition)addDrum(drums,"snare",(t+3)*p.beat(),47+r.nextInt(23),seconds);
-                for(int sub=0;sub<4;sub++)if(r.nextInt(4)==0)addDrum(drums,"hat",(t+sub)*p.beat(),30+r.nextInt(18),seconds);
-                continue;
-            }
-            // Song-level groove identity: the same genre does not imply the same
-            // kick pattern, and section-level development preserves coherence.
-            int identity=Math.floorMod(p.seed(),4);
-            double[] kicks=switch(family){
-                case 0->switch(identity){
-                    case 0->new double[]{0,2.5};case 1->new double[]{0,1.75,3.5};
-                    case 2->new double[]{0,2};default->new double[]{0,2.75,3.25};};
-                case 2->switch(identity){
-                    case 0->new double[]{0,2.75};case 1->new double[]{0,2,3.5};
-                    case 2->new double[]{0,1.5,2.5};default->new double[]{0,2.5};};
-                case 3->switch(identity){
-                    case 0->new double[]{0,2,3.5};case 1->new double[]{0,2.5};
-                    case 2->new double[]{0,1.5,2.75};default->new double[]{0,2,3};};
-                case 4->switch(identity){
-                    case 0->new double[]{0,1.5,2.75};case 1->new double[]{0,.75,2.5,3.5};
-                    case 2->new double[]{0,2.25,3.25};default->new double[]{0,1.75,3};};
-                case 5->switch(identity){
-                    case 0->new double[]{0,1,2,3};case 1->new double[]{0,1,2,3.5};
-                    case 2->new double[]{0,1,2.5,3};default->new double[]{0,1.5,2,3};};
-                default->identity%2==0?new double[]{0,2.5,3.5}:new double[]{0,1.5,3};
-            };
-            for(double kick:kicks){
-                if(kick>0&&r.nextDouble()<.14&&bar%4!=0)continue;
-                addDrum(drums,"kick",(t+kick)*p.beat(),kick==0?101:78+r.nextInt(18),seconds);
-            }
-            if(bar%2==1||family==4||transition){
-                double extra=family==4?3.75:3.5;
-                if(r.nextBoolean())addDrum(drums,"kick",(t+extra)*p.beat(),56+r.nextInt(25),seconds);
-            }
-            double[] snares=family==0?(identity%2==0?new double[]{2}:new double[]{1,3}):
-                family==6?(identity%2==0?new double[]{1.5,3.5}:new double[]{1,3}):
-                family==2&&identity==3?new double[]{2}:new double[]{1,3};
-            for(double back:snares)addDrum(drums,"snare",(t+back)*p.beat(),78+r.nextInt(25),seconds);
-            if(transition)addDrum(drums,"snare",(t+3.75)*p.beat(),42+r.nextInt(26),seconds);
-            int subdiv=family==4||family==5?16:8;
-            for(int sub=0;sub<subdiv;sub++){
-                double dropout=bar%8==4?.34:(transition?.21:.11);
-                if(r.nextDouble()<dropout)continue;
-                double step=4.0*sub/subdiv;
-                double swing=(sub%2==1)?p.style().swing():0;
-                boolean open=sub==subdiv-1&&transition||sub==subdiv/2-1&&bar%4==2&&r.nextBoolean();
-                int velocity=sub%(subdiv/4)==0?64+r.nextInt(13):36+r.nextInt(23);
-                addDrum(drums,open?"open-hat":"hat",(t+step+swing)*p.beat(),velocity,seconds);
-            }
-        }
-    }
     private static List<Composition.Chord> snapshots(List<Composition.Note> notes,List<Composition.Harmony> harmony,int seconds){
         TreeSet<Double> cuts=new TreeSet<>();cuts.add(0.0);cuts.add((double)seconds);
         for(Composition.Note n:notes){cuts.add(n.start());cuts.add(n.start()+n.duration());}
@@ -349,7 +292,5 @@ public final class MusicV4 {
         double length=Math.min(duration,seconds-start);
         if(length>1e-7&&start>=0&&start<seconds)notes.add(new Composition.Note(voice,Math.max(0,Math.min(127,pitch)),start,length,velocity));
     }
-    private static void addDrum(List<Composition.Drum> drums,String kind,double start,int velocity,int seconds){
-        if(start>=0&&start<seconds-1e-7)drums.add(new Composition.Drum(kind,start,Math.max(1,Math.min(127,velocity))));
-    }
+
 }
