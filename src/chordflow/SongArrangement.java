@@ -53,11 +53,14 @@ public final class SongArrangement {
             n.voice().startsWith("arp"));
         drums.clear();
         // Lead phrasing survives, while sections control presence and intensity.
-        for(int i=0;i<notes.size();i++){
+        for(int i=notes.size()-1;i>=0;i--){
             Composition.Note n=notes.get(i);
             int sec=section(id,(int)Math.floor(n.start()/beat/4),bars);
             if(n.voice().startsWith("lead")&&bars>=12){
-                if(sec==3&&((i+id.melody())%3!=0)&&n.start()>beat*4)continue;
+                if(sec==3&&((i+id.melody())%3!=0)&&n.start()>beat*4){
+                    notes.remove(i); // actual breathing room in the breakdown
+                    continue;
+                }
                 int velocity=(int)Math.round(n.velocity()*Math.min(1.10,energy(sec)));
                 notes.set(i,new Composition.Note(n.voice(),n.pitch(),n.start(),n.duration(),
                     Math.max(37,Math.min(120,velocity))));
@@ -145,6 +148,13 @@ public final class SongArrangement {
                 if(sec==3&&j>0||sec==0&&j>1)continue;
                 drum(drums,"kick",base+kicks[j],(int)((j==0?103:74)*level),beat,seconds);
             }
+            // A seed-specific syncopation acts as a recognizable drum motif,
+            // rather than choosing from the same handful of kick grids alone.
+            double[] offbeats={.75,1.75,2.25,3.25,3.5};
+            int sync=(int)Math.floorMod(mix(planSeed^0x7F4A7C15D42E19A1L),
+                offbeats.length);
+            if(!sparse&&sec!=0&&sec!=3&&(bar+id.groove())%3!=0)
+                drum(drums,"kick",base+offbeats[sync],(int)(57*level),beat,seconds);
             double[] snares=sparse?
                 (style.equals("cinematic")?new double[]{3}:new double[]{2.5}):
                 id.drums()%3==0?new double[]{2}:
@@ -282,8 +292,17 @@ public final class SongArrangement {
             case "electronic"->new int[]{80,81,10,11,98,4};
             default->new int[]{24,11,4,5,10,0};
         };
+        // A deliberately selected lead preset narrows the timbral family,
+        // but still varies the actual instrument with the seed.
+        if(role.equals("lead")){
+            return switch(c.instrumentPreset){
+                case "soft-keys"->new int[]{0,1,2,3,4,5}[id.palette()];
+                case "nylon-pluck"->new int[]{24,25,26,27,28,29}[id.palette()];
+                case "glass"->new int[]{10,11,12,14,15,98}[id.palette()];
+                default->lead[id.palette()];
+            };
+        }
         return switch(role){
-            case "lead"->lead[id.palette()];
             case "bass"->bass[(id.palette()+id.bass())%bass.length];
             case "pad"->pad[(id.palette()+id.backing())%pad.length];
             case "arp"->arp[(id.palette()+id.melody())%arp.length];
