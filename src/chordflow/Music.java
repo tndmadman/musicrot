@@ -208,7 +208,9 @@ public final class Music {
         if(!c.drums.isEmpty()){
             Track drums=seq.createTrack();
             for(Composition.Drum hit:c.drums){
-                int pitch=DrumComposer.gmPitch(c,hit);
+                // Replay-only for imported or archived compositions. New songs
+                // contain no percussion events, so channel 10 is never created.
+                int pitch=gmDrumPitch(c,hit);
                 long tick=Math.round(c.beatAtSeconds(hit.start())*960);
                 long end=tick+Math.max(1,Math.round(.08*c.bpm/60*960));
                 drums.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON,9,pitch,hit.velocity()),tick));
@@ -217,6 +219,23 @@ public final class Music {
         }
         Files.createDirectories(path.toAbsolutePath().getParent());
         MidiSystem.write(seq,1,path.toFile());
+    }
+    /** Historical MIDI drum mapping. Never generates a drum event. */
+    private static int gmDrumPitch(Composition c,Composition.Drum hit){
+        int kit=SongArrangement.hasGeneratedIdentity(c)?
+            Math.floorMod(SongArrangement.identity(c).drums(),3):0;
+        return switch(hit.kind()){
+            case "kick"->kit==1?35:36;
+            case "snare"->kit==2?40:38;
+            case "hat"->kit==1?44:42;
+            case "open-hat"->46;
+            case "clap"->39;
+            case "rim"->37;
+            case "tom"->kit==1?47:45;
+            case "ride"->kit==2?59:51;
+            case "crash"->kit==2?57:49;
+            default->throw new IllegalArgumentException("UNKNOWN_PERCUSSION "+hit.kind());
+        };
     }
     private static int gmProgram(String role,String preset,String mode){
         return switch(role){
