@@ -126,18 +126,39 @@ public final class Audio {
     private static void renderDrum(Composition.Drum hit,long seed,float[] left,float[] right){
         int start=(int)Math.round(hit.start()*RATE);
         double level=hit.velocity()/127.0;
-        boolean kick=hit.kind().equals("kick"),snare=hit.kind().equals("snare");
-        int length=(int)(RATE*(kick?.34:snare?.22:hit.kind().equals("open-hat")?.33:.105));
+        String kind=hit.kind();
+        boolean kick=kind.equals("kick"),snare=kind.equals("snare"),
+            clap=kind.equals("clap"),rim=kind.equals("rim"),tom=kind.equals("tom"),
+            metallic=kind.equals("ride")||kind.equals("crash");
+        double duration=switch(kind){
+            case "kick"->.34;case "snare"->.22;case "clap"->.28;
+            case "rim"->.09;case "tom"->.29;case "open-hat"->.32;
+            case "ride"->.55;case "crash"->.9;default->.11;
+        };
+        int length=(int)(RATE*duration);
         int rng=(int)(seed^(seed>>>32))|1;double phase=0;
         for(int i=0;i<length&&start+i<left.length;i++){
-            double t=i/(double)RATE,env=Math.exp(-t*(kick?18:snare?24:43));
+            double t=i/(double)RATE;
             rng^=rng<<13;rng^=rng>>>17;rng^=rng<<5;
             double noise=((rng&0xffff)/32767.5-1);
+            double env=Math.exp(-t*(kick?18:tom?13:clap?19:rim?60:metallic?5:snare?24:43));
             double sample;
-            if(kick){double freq=51+86*Math.exp(-t*34);phase+=2*Math.PI*freq/RATE;sample=Math.sin(phase)*env*.43;}
-            else if(snare){phase+=2*Math.PI*175/RATE;sample=(noise*.23+Math.sin(phase)*.09)*env;}
-            else{sample=noise*env*(hit.kind().equals("open-hat")?.145:.11);}
-            float v=(float)(sample*level);left[start+i]+=v;right[start+i]+=v;
+            if(kick){
+                phase+=2*Math.PI*(51+86*Math.exp(-t*34))/RATE;
+                sample=Math.sin(phase)*env*.43;
+            }else if(tom){
+                phase+=2*Math.PI*(108+58*Math.exp(-t*27))/RATE;
+                sample=(Math.sin(phase)*.29+noise*.025)*env;
+            }else if(snare||clap||rim){
+                phase+=2*Math.PI*(rim?480:175)/RATE;
+                sample=(noise*(rim?.13:.23)+Math.sin(phase)*(rim?.07:.09))*env;
+                if(clap)sample*=1+.4*Math.sin(2*Math.PI*32*t);
+            }else{
+                sample=noise*env*(metallic?.095:kind.equals("open-hat")?.145:.11);
+                if(metallic)sample+=Math.sin(2*Math.PI*5200*t)*env*.018;
+            }
+            float v=(float)(sample*level);
+            left[start+i]+=v;right[start+i]+=v;
         }
     }
     private static void writeShort(OutputStream o,int v)throws IOException{o.write(v&255);o.write((v>>>8)&255);}
