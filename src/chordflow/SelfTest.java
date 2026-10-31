@@ -94,6 +94,56 @@ public final class SelfTest {
             check(groovePatterns.size()>=4,"seed-specific-drum-grooves-"+style);
             check(leadInstruments.size()>=4,"seed-specific-lead-instruments-"+style);
         }
+        // Percussion is now an actual multi-bar musical part: every event must
+        // survive as a sampled GM MIDI drum and a visible lane at the same time.
+        for(String style:List.of("lofi","pop","rock","funk","electronic","jazz","cinematic")){
+            Set<String> drumFingerprints=new HashSet<>();
+            Set<String> firstBarPockets=new HashSet<>();
+            for(int song=0;song<18;song++){
+                Composition piece=MusicV4.generate(9000L+song,48,"flow","noir",style);
+                StringBuilder pattern=new StringBuilder(),firstBar=new StringBuilder();
+                for(Composition.Drum hit:piece.drums){
+                    int gm=DrumComposer.gmPitch(piece,hit);
+                    check(gm>=35&&gm<=59,"percussion-general-midi-"+style+"-"+song+"-"+hit.kind());
+                    int lane=Visual.percussionLane(hit.kind());
+                    check(lane>=0&&lane<=3,"percussion-shown-in-lane-"+style+"-"+song+"-"+hit.kind());
+                    long ticks=Math.round(hit.start()*piece.bpm/60*16);
+                    String token=hit.kind()+"@"+ticks+";";
+                    if(ticks<128)pattern.append(token);
+                    if(ticks<64)firstBar.append(token);
+                }
+                drumFingerprints.add(pattern.toString());
+                firstBarPockets.add(firstBar.toString());
+            }
+            check(drumFingerprints.size()>=16,"drum-multi-bar-identity-"+style);
+            check(firstBarPockets.size()>=10,"distinct-first-bar-beats-"+style);
+        }
+        check(Visual.percussionLane("kick")!=Visual.percussionLane("snare")&&
+            Visual.percussionLane("snare")!=Visual.percussionLane("hat")&&
+            Visual.percussionLane("hat")!=Visual.percussionLane("crash"),
+            "simultaneous-drum-hits-have-separate-visual-lanes");
+        Composition percussionFixture=MusicV4.generate(722,24,"flow","noir","pop");
+        Path percussionTest=Files.createTempFile("chordflow-drum-midi",".mid");
+        try{
+            Music.writeMidi(percussionFixture,percussionTest);
+            Sequence midi=javax.sound.midi.MidiSystem.getSequence(percussionTest.toFile());
+            long emitted=0;Map<String,Integer> expectedHits=new HashMap<>(),actualHits=new HashMap<>();
+            for(Composition.Drum hit:percussionFixture.drums){
+                int p=DrumComposer.gmPitch(percussionFixture,hit);
+                long tick=Math.round(percussionFixture.beatAtSeconds(hit.start())*960);
+                String id=p+"@"+tick;
+                expectedHits.merge(id,1,Integer::sum);
+            }
+            for(Track track:midi.getTracks())for(int event=0;event<track.size();event++){
+                MidiEvent me=track.get(event);
+                if(me.getMessage() instanceof ShortMessage sm&&sm.getChannel()==9&&
+                    sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0){
+                    emitted++;actualHits.merge(sm.getData1()+"@"+me.getTick(),1,Integer::sum);
+                }
+            }
+            check(emitted==percussionFixture.drums.size()&&actualHits.equals(expectedHits),
+                "all-percussion-events-are-audible-and-beat-cue-backed");
+        }finally{Files.deleteIfExists(percussionTest);}
         MusicQuality.Report quality=MusicQuality.analyze(Music.generate(317,60,"flow","noir"));
         check(quality.leadPhrases()>=4&&quality.distinctMelodyWindows()>=3,
             "multi-section-melodic-development");
