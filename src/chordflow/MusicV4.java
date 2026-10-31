@@ -58,7 +58,14 @@ public final class MusicV4 {
         return generate(seed,seconds,mode,theme,requestedStyle,0);
     }
     public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,int variation){
+        return generate(seed,seconds,mode,theme,requestedStyle,variation,"auto-ensemble");
+    }
+    /** Select the musical ensemble BEFORE creating the accompaniment notes. */
+    public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,
+                                       int variation,String instrumentPreference){
         if(variation<0||variation>12)throw new IllegalArgumentException("INVALID_COMPOSITION_VARIATION");
+        if(!Composition.PRESETS.contains(instrumentPreference))
+            throw new IllegalArgumentException("INSTRUMENT_PRESET_INVALID");
         if(seconds<2||seconds>180)throw new IllegalArgumentException("DURATION_OUT_OF_RANGE");
         if(!Set.of("flow","guitar").contains(mode))throw new IllegalArgumentException("INVALID_MODE");
         long planSeed=seed^(0xD1B54A32D192ED03L*variation);
@@ -74,6 +81,8 @@ public final class MusicV4 {
             (minor?MINOR_PROGRESSIONS:MAJOR_PROGRESSIONS)[r.nextInt(minor?MINOR_PROGRESSIONS.length:MAJOR_PROGRESSIONS.length)];
         double beat=60.0/tempo,totalBeats=seconds/beat;
         Plan plan=new Plan(planSeed,style,key,minor,tempo,beat,totalBeats,progressions,minor?MINOR:MAJOR,guitar,r.nextInt(7));
+        // The band is chosen as a unit, not as independent random MIDI patches.
+        EnsembleCatalog.Ensemble ensemble=EnsembleCatalog.select(planSeed,style.id(),instrumentPreference);
         List<Composition.Harmony> harmony=harmonize(plan,r,seconds);
         List<Composition.Note> notes=new ArrayList<>();
         // Newly generated songs are entirely instrument-led. No automatic drum events.
@@ -81,13 +90,15 @@ public final class MusicV4 {
         melody(plan,harmony,notes,seconds);
         // Preserve exact physical guitar fretting while varying the rhythm section.
         if(guitar)accompaniment(plan,harmony,notes,seconds,r);
-        SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes);
+        SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes,ensemble);
         notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
         List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
-        Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed+" variation "+variation,mode,theme,
+        // ensemble-v5 title marker maintains exact instrument mapping for
+        // saved compositions and distinguishes legacy V4 replay behavior.
+        Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed+" ensemble-v5 variation "+variation,mode,theme,
             "ORIGINAL_GENERATED",ROOTS[key],minor?"minor":"major",tempo,seconds,
             snapshots,notes,List.of(new Composition.Tempo(0,tempo)),
-            guitar?"nylon-pluck":"soft-keys",harmony,drums,true);
+            instrumentPreference,harmony,drums,true);
         MusicQuality.ensureBasicIntegrity(output);
         return output;
     }
