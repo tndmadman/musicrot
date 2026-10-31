@@ -41,7 +41,8 @@ public final class SongArrangement {
         return switch(section){case 0->.57;case 2->1.12;case 3->.43;case 4->.61;default->.91;};
     }
     public static void arrange(long planSeed,String style,String mode,int bpm,int seconds,
-                               List<Composition.Harmony> harmony,List<Composition.Note> notes){
+                               List<Composition.Harmony> harmony,List<Composition.Note> notes,
+                               EnsembleCatalog.Ensemble ensemble){
         Identity id=identity(planSeed,style);
         double beat=60.0/bpm,total=seconds/beat;
         int bars=(int)Math.ceil(total/4.0);
@@ -106,33 +107,37 @@ public final class SongArrangement {
             int[] voiced=voiceChord(chord,hIndex==0?null:harmony.get(hIndex-1).pitches());
             int sec=section(id,(int)Math.floor(from/4),bars);
             double e=energy(sec);
-            switch(id.backing()){
-                case 0->{ // sustained warm bed and answering plucks
-                    pad(notes,voiced,from,Math.min(to-from,4.5),.65*e,beat,seconds);
-                    arp(notes,voiced,from+.5,to,2.0,0,e,beat,seconds);
+            // Ensemble decides orchestration. The old code forced a pad and an
+            // arpeggio into every song, even when they were incompatible.
+            // New optional roles stay silent rather than importing alien timbres.
+            boolean hasPad=ensemble.supports("pad");
+            boolean hasArp=ensemble.supports("arp");
+            double gap=(id.backing()%2==0?.5:.75);
+            switch(ensemble.backing()){
+                case "sustain"->{
+                    if(hasPad)pad(notes,voiced,from,Math.min(to-from,5.5),.66*e,beat,seconds);
+                    if(hasArp&&to-from>4.0)
+                        arp(notes,voiced,from+2.0,to,2.5,id.backing(),.33*e,beat,seconds);
                 }
-                case 1->{ // tight piano comping
-                    for(double at=from;at<to-.05;at+=2.0)
-                        pad(notes,voiced,at,Math.min(.53,to-at),.91*e,beat,seconds);
-                    arp(notes,voiced,from+.75,to,1.5,1,e,beat,seconds);
+                case "comp"->{
+                    // Short, rhythmic chord stabs: do not saturate the melody.
+                    if(hasPad)for(double at=from+gap;at<to-.09;at+=2.0)
+                        pad(notes,voiced,at,Math.min(.46,to-at),.57*e,beat,seconds);
+                    if(hasArp&&!hasPad)
+                        arp(notes,voiced,from+.75,to,1.5,id.backing(),.69*e,beat,seconds);
                 }
-                case 2->{ // offbeat short stabs, syncopated bass carries pulse
-                    for(double at=from+.5;at<to-.05;at+=1.0)
-                        pad(notes,voiced,at,Math.min(.30,to-at),.81*e,beat,seconds);
-                    arp(notes,voiced,from+.5,to,2.0,2,.65*e,beat,seconds);
+                case "pluck"->{
+                    if(hasArp)arp(notes,voiced,from+.25,to,
+                        id.backing()%2==0?.75:1.25,id.backing(),.68*e,beat,seconds);
+                    if(hasPad&&to-from>3)
+                        pad(notes,voiced,from,Math.min(.60,to-from),.38*e,beat,seconds);
                 }
-                case 3->{ // rolling broken chord
-                    pad(notes,voiced,from,Math.min(to-from,3.7),.30*e,beat,seconds);
-                    arp(notes,voiced,from+.25,to,.5,3,e,beat,seconds);
+                case "space"->{
+                    if(hasPad)pad(notes,voiced,from,Math.min(to-from,4.8),.47*e,beat,seconds);
+                    if(hasArp&&to-from>2.5)
+                        arp(notes,voiced,from+1.5,to,2.5,id.backing(),.44*e,beat,seconds);
                 }
-                case 4->{ // slow orchestral / spacious harmony
-                    pad(notes,voiced,from,Math.min(to-from,6.0),.78*e,beat,seconds);
-                    arp(notes,voiced,from+.5,to,2.5,4,.55*e,beat,seconds);
-                }
-                default->{ // independent melodic accompaniment, short responses
-                    pad(notes,voiced,from,Math.min(.7,to-from),.58*e,beat,seconds);
-                    arp(notes,voiced,from+.5,to,1.25,5,e,beat,seconds);
-                }
+                default->throw new IllegalArgumentException("INVALID_ENSEMBLE_BACKING");
             }
         }
         // Do not generate percussion. Imported/archived MIDI drums are replay-only.
@@ -163,19 +168,6 @@ public final class SongArrangement {
             default->new double[]{0,.5,1.75,2.5,3.5};
         };
     }
-    private static double[] kickPattern(int n,String style){
-        if(style.equals("ambient"))return switch(n%3){
-            case 0->new double[]{0};case 1->new double[]{0,2.75};default->new double[]{0,3.5};};
-        if(style.equals("cinematic"))return switch(n%3){
-            case 0->new double[]{0,2.5};case 1->new double[]{0};default->new double[]{0,1.5,3};};
-        if(style.equals("electronic"))return switch(n%3){
-            case 0->new double[]{0,1,2,3};case 1->new double[]{0,1,2,3.5};default->new double[]{0,1.5,2,3};};
-        return switch(n){
-            case 0->new double[]{0,2};case 1->new double[]{0,2.75};case 2->new double[]{0,1.5,2.5};
-            case 3->new double[]{0,1.75,3.5};case 4->new double[]{0,2,3.25};
-            case 5->new double[]{0,1,2,3};default->new double[]{0,2.5,3.5};
-        };
-    }
     private static void pad(List<Composition.Note> notes,int[] voiced,double from,double length,
                             double energy,double beat,int seconds){
         for(int i=1;i<voiced.length;i++)addNote(notes,"pad-"+i,voiced[i],from,Math.max(.07,length),
@@ -200,12 +192,6 @@ public final class SongArrangement {
         notes.add(new Composition.Note(voice,Math.max(0,Math.min(127,pitch)),at,len,
             Math.max(1,Math.min(127,velocity))));
     }
-    private static void drum(List<Composition.Drum> drums,String kind,double at,int velocity,
-                             double beat,int seconds){
-        double t=at*beat;
-        if(t>=0&&t<seconds-.02)
-            drums.add(new Composition.Drum(kind,t,Math.max(1,Math.min(127,velocity))));
-    }
     public static boolean hasGeneratedIdentity(Composition c){
         return c.rights.equals("ORIGINAL_GENERATED")&&c.title.startsWith("Original ")&&
             c.title.contains(" arrangement ")&&c.title.contains(" variation ");
@@ -219,8 +205,27 @@ public final class SongArrangement {
             catch(NumberFormatException ignored){}
         return identity(c.seed^(VARIATION_SALT*variation),style);
     }
-    /** Import and historical composition playback retain their original mapping. */
+    /**
+     * Choose all MIDI programs from the same curated band. Older V4
+     * compositions without the V5 marker retain the original mapping.
+     */
     public static int gmProgram(Composition c,String role){
+        if(c.title.contains(" ensemble-v5 ")){
+            String[] words=c.title.split(" ");
+            String style=words.length>1?words[1]:"pop";
+            int variant=0,at=c.title.lastIndexOf(" variation ");
+            if(at>=0)try{variant=Integer.parseInt(c.title.substring(at+11).trim());}
+                catch(NumberFormatException ex){throw new IllegalArgumentException("INVALID_SAVED_ENSEMBLE_VARIATION",ex);}
+            long planSeed=c.seed^(VARIATION_SALT*variant);
+            if(c.mode.equals("guitar")&&(role.equals("guitar")||role.equals("lead")))
+                return EnsembleCatalog.guitarProgram(style,planSeed);
+            EnsembleCatalog.Ensemble band=EnsembleCatalog.select(planSeed,style,c.instrumentPreset);
+            if(!band.supports(role))
+                throw new IllegalArgumentException("UNSUPPORTED_ENSEMBLE_PART: "+role);
+            return band.program(role);
+        }
+        // Legacy replay: older generated composition JSON carries no ensemble
+        // marker, and must continue to sound as originally rendered.
         String[] words=c.title.split(" ");
         String style=words.length>1?words[1]:"pop";
         int variation=0;
