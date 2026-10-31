@@ -41,8 +41,7 @@ public final class SongArrangement {
         return switch(section){case 0->.57;case 2->1.12;case 3->.43;case 4->.61;default->.91;};
     }
     public static void arrange(long planSeed,String style,String mode,int bpm,int seconds,
-                               List<Composition.Harmony> harmony,List<Composition.Note> notes,
-                               List<Composition.Drum> drums){
+                               List<Composition.Harmony> harmony,List<Composition.Note> notes){
         Identity id=identity(planSeed,style);
         double beat=60.0/bpm,total=seconds/beat;
         int bars=(int)Math.ceil(total/4.0);
@@ -51,7 +50,8 @@ public final class SongArrangement {
         // arpeggiator. Keeping them would drown out the new musical identity.
         notes.removeIf(n->n.voice().startsWith("bass")||n.voice().startsWith("pad")||
             n.voice().startsWith("arp"));
-        drums.clear();
+        // Rhythmic movement comes from the bass, melody, and accompaniment.
+        // No standalone automatic percussion is composed or appended.
         // Lead phrasing survives, while sections control presence and intensity.
         for(int i=notes.size()-1;i>=0;i--){
             Composition.Note n=notes.get(i);
@@ -135,11 +135,7 @@ public final class SongArrangement {
                 }
             }
         }
-        // The rhythm engine owns ALL percussion. Every hit will appear in
-        // canonical MIDI, sampled audio, fingerprints, and the on-screen cue.
-        DrumComposer.compose(planSeed,style,bpm,seconds,id,drums);
-        // Keep drum onsets ordered for stable serialization/replay/fingerprint.
-        drums.sort(Comparator.comparingDouble(Composition.Drum::start).thenComparing(Composition.Drum::kind));
+        // Do not generate percussion. Imported/archived MIDI drums are replay-only.
     }
     private static int[] voiceChord(int[] chord,int[] previous){
         int[] out=chord.clone();
