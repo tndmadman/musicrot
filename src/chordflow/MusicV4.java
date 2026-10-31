@@ -78,8 +78,9 @@ public final class MusicV4 {
         List<Composition.Note> notes=new ArrayList<>();
         List<Composition.Drum> drums=new ArrayList<>();
         melody(plan,harmony,notes,seconds);
-        accompaniment(plan,harmony,notes,seconds,r);
-        groove(plan,drums,seconds);
+        // Preserve exact physical guitar fretting while varying the rhythm section.
+        if(guitar)accompaniment(plan,harmony,notes,seconds,r);
+        SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes,drums);
         notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
         List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
         Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed+" variation "+variation,mode,theme,
@@ -147,6 +148,7 @@ public final class MusicV4 {
         return 60+p.key()+p.scale()[Math.floorMod(degree,7)]+register*12;
     }
     private static void melody(Plan p,List<Composition.Harmony> hs,List<Composition.Note> notes,int seconds){
+        SongArrangement.Identity identity=SongArrangement.identity(p.seed(),p.style().id());
         int last=65+p.key();
         // A song owns a small interval theme. Each phrase develops the same
         // melodic vocabulary, instead of rolling completely unrelated notes.
@@ -164,10 +166,19 @@ public final class MusicV4 {
             int anchor=Math.floorMod(p.motifStart()+phrase*3+r.nextInt(3),7);
             double position=0;int event=0;
             while(position<8-1e-6&&start+position<p.totalBeats()-.05){
-                double length=switch(r.nextInt(9)){case 0->.5;case 1->.75;case 2,3->1.0;case 4->1.25;case 5,6->1.5;default->2.0;};
-                if(p.style().id().equals("ambient"))length=Math.max(1.0,length*1.5);
+                // Stable rhythm language belongs to the song identity: lyrical,
+                // offbeat, rolling, deliberate or call-and-response.
+                double length=switch(identity.melody()){
+                    case 0->new double[]{.5,.75,1,1.25,1.5,2}[r.nextInt(6)];
+                    case 1->new double[]{1,1.5,2,2,2.5,3}[r.nextInt(6)];
+                    case 2->new double[]{.5,.5,.75,1,1.25,1.5}[r.nextInt(6)];
+                    case 3->new double[]{.75,1,1,1.5,2,2.25}[r.nextInt(6)];
+                    default->new double[]{.5,.75,1.5,2,2.5,1}[event%6];
+                };
+                if(p.style().id().equals("ambient"))length=Math.max(.9,length*1.2);
                 length=Math.min(length,8-position);
-                boolean rest=(r.nextDouble()>(p.style().density()+.13))||event>0&&r.nextDouble()<.08;
+                boolean rest=(r.nextDouble()>(p.style().density()+.10))||
+                    event>0&&r.nextDouble()<(identity.melody()==1?.18:.07);
                 double swing=Math.min(.10,p.style().swing())*((event%2==1)?1:0);
                 double onset=start+position+swing;
                 if(!rest&&onset<p.totalBeats()-.05){
