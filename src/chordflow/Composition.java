@@ -53,7 +53,7 @@ public final class Composition {
         this.harmony=List.copyOf(harmony);this.drums=List.copyOf(drums);this.arranged=arranged;validate();
     }
     public Composition withInstrument(String preset){return new Composition(seed,title,mode,theme,rights,key,scaleMode,bpm,duration,chords,notes,tempoMap,preset,harmony,drums,arranged);}
-    public static final Set<String> PRESETS=Set.of("warm-pad","soft-keys","nylon-pluck","glass","layered");
+    public static final Set<String> PRESETS=Set.of("auto-ensemble","warm-pad","soft-keys","nylon-pluck","glass","layered");
     public double secondsAtBeat(double beat){
         if(beat<0||!Double.isFinite(beat))throw new IllegalArgumentException("INVALID_BEAT");
         double seconds=0;
