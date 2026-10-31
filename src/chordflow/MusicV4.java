@@ -37,7 +37,7 @@ public final class MusicV4 {
 
     /** Style is a collection of compositional decisions, not just a sound label. */
     public record Style(String id,int bpmMin,int bpmMax,double swing,double density,
-                        int drumFamily,int phraseBars,int[] chordLengths) {}
+                        int backingFamily,int phraseBars,int[] chordLengths) {}
     private static final Style[] STYLES={
         new Style("lofi",75,98,.075,.68,0,2,new int[]{8,4,4,8,4,4}),
         new Style("ambient",60,85,0,.38,1,4,new int[]{8,8,4,8,8,4}),
@@ -228,9 +228,9 @@ public final class MusicV4 {
             for(double at=from;at<end-.12;at+=2){
                 int beatIndex=(int)Math.round((at-from)/2);
                 int pitch=beatIndex%3==1?fifth:root;
-                double duration=Math.min(p.style().drumFamily()==1?1.75:1.18,end-at);
+                double duration=Math.min(p.style().backingFamily()==1?1.75:1.18,end-at);
                 addNote(notes,"bass-0",pitch,at*p.beat(),duration*p.beat(),75+r.nextInt(29),seconds);
-                if(p.style().drumFamily()==4&&at+1.5<end){
+                if(p.style().backingFamily()==4&&at+1.5<end){
                     addNote(notes,"bass-0",root+12,(at+1.5)*p.beat(),.32*p.beat(),58+r.nextInt(21),seconds);
                 }
             }
