@@ -67,7 +67,7 @@ public final class DrumComposer {
         boolean shuffle=style.equals("jazz")||style.equals("lofi");
         // Stable, independently seeded per-song rhythmic identity.
         Random phraseRandom=new Random(mix(planSeed^0x237A9D51428B6F0CL));
-        double kickPush= new double[]{.0,.25,.5,.75,1.25}[phraseRandom.nextInt(5)];
+        double kickPush= new double[]{.75,1.25,1.75,2.25,3.5}[phraseRandom.nextInt(5)];
         int hatDensity=phraseRandom.nextInt(5);
         int barCycle=phraseRandom.nextBoolean()?4:8;
         for(int bar=0;bar<bars;bar++){
