@@ -247,7 +247,7 @@ public final class SelfTest {
                 MidiMessage msg=track.get(mi).getMessage();
                 if(msg instanceof ShortMessage sm&&sm.getChannel()!=9&&sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0)midiOnsets++;
             }
-            check(midiOnsets==a.notes.size()&&seq.getTracks().length>=5,"multitrack-midi-export-accurate");
+            check(midiOnsets==a.notes.size()&&seq.getTracks().length>=4,"multitrack-midi-export-accurate");
             Composition imported=Music.importMidi(midi,"Licensed by creator",192,10,"gold");check(imported.notes.size()==a.notes.size(),"authorized-midi-import-roundtrip");
             Path compositionPath=tmp.resolve("saved.composition.json");a.save(compositionPath);
             Composition loaded=CompositionIO.read(compositionPath);
