@@ -149,7 +149,7 @@ public final class DrumComposer {
     /** Preserve the original drum pitches for imported and older arrangements. */
     public static int gmPitch(Composition c,Composition.Drum hit){
         int kit=SongArrangement.hasGeneratedIdentity(c)?
-            Math.floorMod(SongArrangement.identity(c.seed,c.title.split(" ")[1]).drums(),3):0;
+            Math.floorMod(SongArrangement.identity(c).drums(),3):0;
         return switch(hit.kind()){
             case "kick"->kit==1?35:36;
             case "snare"->kit==2?40:38;
