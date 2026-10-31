@@ -66,6 +66,34 @@ public final class SelfTest {
         for(int i=0;i<20;i++)musicalSignatures.add(MusicFingerprint.of(
             MusicV4.generate(i+100,25,"flow","noir","pop")).melody());
         check(musicalSignatures.size()>=18,"same-style-twenty-song-melodic-diversity");
+        // Across one fixed theme, seed changes must alter actual rhythm,
+        // drum arrangement and sampled instruments, not merely key or tempo.
+        for(String style:List.of("pop","jazz","ambient","electronic","cinematic")){
+            Set<String> designs=new HashSet<>(),bassPatterns=new HashSet<>(),
+                groovePatterns=new HashSet<>();
+            Set<Integer> leadInstruments=new HashSet<>();
+            for(int i=0;i<24;i++){
+                long seed=10100+i;
+                Composition song=MusicV4.generate(seed,40,"flow","noir",style);
+                check(song.title.startsWith("Original "+style+" "),
+                    "theme-preserved-"+style+"-"+i);
+                designs.add(SongArrangement.identity(seed,style).signature());
+                leadInstruments.add(SongArrangement.gmProgram(song,"lead"));
+                StringBuilder bassRhythm=new StringBuilder(),drumRhythm=new StringBuilder();
+                for(Composition.Note n:song.notes)
+                    if(n.voice().startsWith("bass")&&n.start()<song.bpm*0+8*60/song.bpm)
+                        bassRhythm.append(Math.round(n.start()*song.bpm/60*4)).append(',');
+                for(Composition.Drum d:song.drums)
+                    if(d.start()<8*60/song.bpm)
+                        drumRhythm.append(d.kind()).append('@')
+                            .append(Math.round(d.start()*song.bpm/60*4)).append(',');
+                bassPatterns.add(bassRhythm.toString());groovePatterns.add(drumRhythm.toString());
+            }
+            check(designs.size()>=21,"unique-arrangement-identities-"+style);
+            check(bassPatterns.size()>=4,"seed-specific-bass-rhythm-"+style);
+            check(groovePatterns.size()>=4,"seed-specific-drum-grooves-"+style);
+            check(leadInstruments.size()>=4,"seed-specific-lead-instruments-"+style);
+        }
         MusicQuality.Report quality=MusicQuality.analyze(Music.generate(317,60,"flow","noir"));
         check(quality.leadPhrases()>=4&&quality.distinctMelodyWindows()>=3,
             "multi-section-melodic-development");
