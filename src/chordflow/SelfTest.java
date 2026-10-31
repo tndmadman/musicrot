@@ -48,6 +48,12 @@ public final class SelfTest {
         MusicFingerprint.Signature fingerprint=MusicFingerprint.of(a);
         check(fingerprint.encode().equals(MusicFingerprint.Signature.parse(fingerprint.encode()).encode()),
             "fingerprint-durable-roundtrip");
+        MusicFingerprint.Signature copiedBeatWithDifferentLead=new MusicFingerprint.Signature(
+            "0".repeat(64),fingerprint.drums(),"1".repeat(64),"2".repeat(64),
+            fingerprint.melodySketch()^0xAAAAAAAAAAAAAAAAL,fingerprint.drumsSketch());
+        check(MusicFingerprint.nearDuplicate(fingerprint,copiedBeatWithDifferentLead),
+            "reject-recycled-drum-beat-even-with-new-melody");
+
         Composition sameMusicDifferentSeed=new Composition(98765,a.title,a.mode,a.theme,a.rights,
             a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,a.tempoMap,a.instrumentPreset,a.harmony,a.drums,a.arranged);
         check(MusicFingerprint.nearDuplicate(fingerprint,MusicFingerprint.of(sameMusicDifferentSeed)),
