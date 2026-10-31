@@ -155,7 +155,7 @@ with tempfile.TemporaryDirectory(prefix='cf-delete-seed-') as tmp:
         old_journal.write_text('state=DELETED\nseed=42\nmode=flow\nattempts=0\n')
         assert 'old-deleted-fixture' not in jobs()
         old_cancelled = work / 'jobs' / 'old-cancelled-fixture.properties'
-        old_cancelled.write_text('state=CANCELLED\\nseed=43\\nmode=flow\\nattempts=0\\n')
+        old_cancelled.write_text('state=CANCELLED\nseed=43\nmode=flow\nattempts=0\n')
         assert 'old-cancelled-fixture' not in jobs(), 'historical canceled jobs must stay hidden'
         print('PASS historical CANCELLED and DELETED jobs are hidden from the API immediately')
 
