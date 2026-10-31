@@ -8,6 +8,8 @@ import java.util.*;
 public final class MusicFingerprint {
     private MusicFingerprint() {}
     public static final int VERSION=1;
+    // An empty percussion track must not make all instrument-only songs duplicates.
+    private static final String EMPTY_DRUM_HASH=hash(List.of());
     public record Signature(String melody,String drums,String harmony,String structure,long melodySketch,long drumsSketch) {
         public String encode(){return melody+":"+drums+":"+harmony+":"+structure+":"+
             Long.toUnsignedString(melodySketch,16)+":"+Long.toUnsignedString(drumsSketch,16);}
@@ -65,12 +67,16 @@ public final class MusicFingerprint {
         if(a.melody().equals(b.melody()))return true;
         // A different melody does NOT excuse a copied drum arrangement. This
         // was the principal weakness of V4.1's cross-song rejection policy.
-        if(a.drums().equals(b.drums()))return true;
+        boolean hasDrums=!a.drums().equals(EMPTY_DRUM_HASH)&&
+            !b.drums().equals(EMPTY_DRUM_HASH);
+        if(hasDrums&&a.drums().equals(b.drums()))return true;
         int m=Long.bitCount(a.melodySketch()^b.melodySketch());
         int d=Long.bitCount(a.drumsSketch()^b.drumsSketch());
-        // Extremely close multi-bar groove sketches are rejected on their own.
-        if(d<=4)return true;
-        return m<=7&&d<=10&&(a.harmony().equals(b.harmony())||a.structure().equals(b.structure()));
+        if(hasDrums&&d<=4)return true;
+        // Instrument-only tracks must be judged by actual melody, harmony and
+        // arrangement, not by matching signatures of absent percussion.
+        return m<=7&&(a.harmony().equals(b.harmony())||a.structure().equals(b.structure()))
+            &&(!hasDrums||d<=10);
     }
     public static String key(Composition c){return of(c).encode();}
     private static List<String> ngrams(List<String> tokens){
