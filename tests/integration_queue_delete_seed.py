@@ -95,6 +95,13 @@ with tempfile.TemporaryDirectory(prefix='cf-delete-seed-') as tmp:
         for i in all_ids:
             if i != output_job:
                 assert request('/api/cancel?' + q(id=i), post=True)[1] == 'CANCELLED'
+        hidden = set(all_ids) - {output_job}
+        assert hidden.isdisjoint(jobs()), 'cancelled QUEUED rows must disappear immediately'
+        for i in hidden:
+            journal = work / 'jobs' / (i + '.properties')
+            assert journal.is_file() and 'state=CANCELLED' in journal.read_text()
+        assert len(jobs()) == 1, 'dashboard summary should count only visible jobs'
+        print('PASS canceled queued jobs leave no visible entries and retain safe cancellation journals')
         worker = subprocess.Popen(['java', '-Djava.awt.headless=true', '-cp', str(root / 'build'),
                                    'chordflow.Main', 'worker', '--url', url, '--id', 'test-seed-delete',
                                    '--out', str(work / 'output')],
@@ -140,13 +147,17 @@ with tempfile.TemporaryDirectory(prefix='cf-delete-seed-') as tmp:
         controller = subprocess.Popen(command, cwd=root, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         wait_for_server()
         assert output_job not in jobs()
+        assert hidden.isdisjoint(jobs()), 'canceled jobs resurfaced after restart'
         assert 'state=DELETED' in journal.read_text()
-        print('PASS deleted job hidden after controller restart and durable journal retained')
+        print('PASS canceled/deleted jobs hidden after controller restart; safe journals retained')
         # Previously deleted jobs from older ChordFlow releases must also be hidden.
         old_journal = work / 'jobs' / 'old-deleted-fixture.properties'
         old_journal.write_text('state=DELETED\nseed=42\nmode=flow\nattempts=0\n')
         assert 'old-deleted-fixture' not in jobs()
-        print('PASS historical DELETED jobs are hidden from the API immediately')
+        old_cancelled = work / 'jobs' / 'old-cancelled-fixture.properties'
+        old_cancelled.write_text('state=CANCELLED\\nseed=43\\nmode=flow\\nattempts=0\\n')
+        assert 'old-cancelled-fixture' not in jobs(), 'historical canceled jobs must stay hidden'
+        print('PASS historical CANCELLED and DELETED jobs are hidden from the API immediately')
 
     finally:
         if worker is not None:
