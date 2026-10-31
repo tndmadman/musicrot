@@ -146,3 +146,52 @@ These are structural assertions, not a human listening certification.
 Limitations: the generator is rule-based, not a trained composer, and its output
 still needs objective audio comparison and subjective human evaluation. Real
 instrument samples require the operator's locally configured SF2 SoundFont.
+
+## V4.2 percussion rhythm and beat-cue correction
+
+Three 60-second produced MP4 examples were reviewed: seeds 6099072776178533,
+6243728254694029 and 309111617431044. The on-screen tempo labels were
+93, 91 and 77 BPM. Their original RHYTHM display was one row only: simultaneous
+kick/snare/hat events overwrote each other visually. Its blocks also stayed
+stationary with no bar-position playhead. This made it impossible to confirm
+which part of the drum kit was actually being heard.
+
+The underlying V4.1 rhythm generator still strongly favored a downbeat kick,
+reused seven single-bar snare patterns, and repeated much of the same hi-hat
+grid. A new seed alone did not produce convincingly independent drum writing.
+
+### Fixed source of truth
+
+- DrumComposer.java now composes each seed's *multi-bar* percussion track
+  with seven distinct groove grammars, style-restricted rhythm feels,
+  seed-specific syncopated pickup, varied backbeat locations, different
+  cymbal subdivisions, two-bar answers, end-of-phrase fills, and section
+  dynamics. Some bars intentionally omit a kick or a snare for musical space.
+- New actual GM percussion types include clap, rim, tom, ride and crash,
+  in addition to kick, snare, closed and open hats. A generated seed can
+  select alternative General MIDI kick, snare and hat samples.
+- No separate hidden drum renderer exists: all hits originate from
+  Composition.Drum; canonical MIDI channel 10, FluidSynth sampled audio,
+  JSON/replay, music fingerprints and the visualizer consume those events.
+  Non-sampled preview synthesis recognizes the extended types too.
+- Visual.java now displays separate **KICK**, **SNARE / CLAP**,
+  **HATS / RIDE**, and **TOMS / FX** rows with markers at real event onsets.
+  It includes a moving bar cursor and independent markers when two or more
+  drum sounds play simultaneously. The visualizer no longer prioritizes
+  kick over a concurrent snare or cymbal, so no hit disappears from the cue.
+- New Java self-tests compare rhythm events across 18 songs in seven
+  styles and assert generated MIDI channel-10 events, GM pitches and
+  visualization lanes agree with every canonical percussion hit.
+
+### Compatibility and verification
+
+Prior composition JSON and video outputs remain valid; this is a
+generation/display change for newly generated songs. Newly supported drum
+kinds are additive to the existing schema-v3 format. Existing imported
+composition audio retains legacy GM mappings. The seed and chosen musical
+style continue to constrain the groove. The original visual themes,
+queue controls, output audit and renderers are unchanged.
+
+CI can establish exact MIDI-event mapping and distinct structural patterns;
+the operator must still *listen* to batches made on the actual Windows
+SoundFont configuration before judging final musical quality.
