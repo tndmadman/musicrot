@@ -1,5 +1,33 @@
 # ChordFlow V4 composition branch — implementation and operating notes
 
+## V4.3 — automatic percussion generator removed
+
+**Current behavior:** New generated songs have **no automatically added kick,
+snare, clap, rim, tom, hi-hat, cymbal or metronome track**. DrumComposer.java,
+the older V4 groove() method, and their call sites have been deleted.
+The user-selected musical style still drives key, tempo, instrument families,
+chord progression, lead phrasing, seed-specific bass lines, and chord rhythm.
+These actual sampled instrument note onsets are the complete new music pipeline.
+
+The visualizer's beat cue now reads **BASS / MELODY / INSTRUMENTS** note-on
+events directly from canonical Composition.notes and uses the same timestamps
+as MIDI and sampled audio. No visual-only or audio-only percussion is added.
+There is no General MIDI channel 10 for any newly generated song.
+
+**Legacy compatibility:** A saved/owned MIDI or older composition that
+already contains percussion will continue to load, validate, render and show
+its historical drum events. This compatibility is a passive playback route,
+not an automatic drum generator. Historical videos aren't changed.
+
+**Anti-repetition fix:** Empty drum tracks are not treated as duplicated
+drum patterns. The music fingerprint system compares instruments and melody
+for instrument-only songs, and retains real drum similarity checks only
+when both compositions actually have percussion.
+
+The V4.1 and V4.2 descriptions below are engineering history. In particular,
+V4.2's automatic drum-generation design is **superseded and disabled**.
+
+
 Branch: feature/chordflow-v4-composition, based on feature/chordflow-engine-v1.
 This is an engineering working branch, **not a certified production-quality music engine**.
 
