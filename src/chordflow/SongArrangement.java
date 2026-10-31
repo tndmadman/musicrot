@@ -26,7 +26,7 @@ public final class SongArrangement {
     }
     // Sections use bars rather than seconds; duration-2s smoke tests still
     // get full musical parts, while long videos develop dynamic contrast.
-    private static int section(Identity id,int bar,int bars){
+    static int section(Identity id,int bar,int bars){
         if(bars<12)return 1; // short compositions: no artificial intros
         int intro=id.form()%2==0?2:1;
         int outro=bars>=18?2:1;
@@ -135,50 +135,9 @@ public final class SongArrangement {
                 }
             }
         }
-        // Relative groove accents are seed-specific but style-constrained. Two
-        // seeds of one style need not share kick, hats or snare placement.
-        for(int bar=0;bar<bars;bar++){
-            int sec=section(id,bar,bars);
-            double level=energy(sec),base=bar*4.0;
-            Random r=new Random(mix(planSeed^((long)bar*0xA0761D6478BD642FL)));
-            boolean sparse=style.equals("ambient")||style.equals("cinematic");
-            double[] kicks=kickPattern(id.groove(),style);
-            for(int j=0;j<kicks.length;j++){
-                if(sparse&&sec!=2&&j>0&&r.nextBoolean())continue;
-                if(sec==3&&j>0||sec==0&&j>1)continue;
-                drum(drums,"kick",base+kicks[j],(int)((j==0?103:74)*level),beat,seconds);
-            }
-            // A seed-specific syncopation acts as a recognizable drum motif,
-            // rather than choosing from the same handful of kick grids alone.
-            double[] offbeats={.75,1.75,2.25,3.25,3.5};
-            int sync=(int)Math.floorMod(mix(planSeed^0x7F4A7C15D42E19A1L),
-                offbeats.length);
-            if(!sparse&&sec!=0&&sec!=3&&(bar+id.groove())%3!=0)
-                drum(drums,"kick",base+offbeats[sync],(int)(57*level),beat,seconds);
-            double[] snares=sparse?
-                (style.equals("cinematic")?new double[]{3}:new double[]{2.5}):
-                id.drums()%3==0?new double[]{2}:
-                id.drums()%3==1?new double[]{1,3}:new double[]{1.5,3.5};
-            for(double snare:snares){
-                if(sec==0&&snare!=snares[0]||sec==3&&r.nextBoolean())continue;
-                drum(drums,"snare",base+snare,(int)(78*level),beat,seconds);
-            }
-            double hatStep=style.equals("ambient")||style.equals("cinematic")?
-                (id.drums()%2==0?1.0:2.0):
-                (id.drums()==0?.25:id.drums()==1?.75:id.drums()==2?1.0:.5);
-            for(double at=hatStep/2;at<4;at+=hatStep){
-                if(sec==3&&r.nextDouble()<.75||sec==0&&r.nextBoolean())continue;
-                if(r.nextDouble()<(sparse?.35:.10))continue;
-                double human=(id.drums()%2==0&&((int)(at/hatStep))%2==1)?.045:0;
-                boolean open=at>=3.5&&bar%4==3&&r.nextBoolean();
-                drum(drums,open?"open-hat":"hat",base+at+human,
-                    (int)((42+r.nextInt(25))*level),beat,seconds);
-            }
-            if(sec==2&&bar%4==3){
-                if(!sparse)drum(drums,"snare",base+3.75,(int)(63*level),beat,seconds);
-                if(id.groove()%2==0)drum(drums,"kick",base+3.5,(int)(65*level),beat,seconds);
-            }
-        }
+        // The rhythm engine owns ALL percussion. Every hit will appear in
+        // canonical MIDI, sampled audio, fingerprints, and the on-screen cue.
+        DrumComposer.compose(planSeed,style,bpm,seconds,id,drums);
         // Keep drum onsets ordered for stable serialization/replay/fingerprint.
         drums.sort(Comparator.comparingDouble(Composition.Drum::start).thenComparing(Composition.Drum::kind));
     }
@@ -254,6 +213,15 @@ public final class SongArrangement {
     public static boolean hasGeneratedIdentity(Composition c){
         return c.rights.equals("ORIGINAL_GENERATED")&&c.title.startsWith("Original ")&&
             c.title.contains(" arrangement ")&&c.title.contains(" variation ");
+    }
+    /** Reconstruct the saved seed/variation identity for exact MIDI replay. */
+    public static Identity identity(Composition c){
+        String[] words=c.title.split(" ");
+        String style=words.length>1?words[1]:"pop";
+        int variation=0,position=c.title.lastIndexOf(" variation ");
+        if(position>=0)try{variation=Integer.parseInt(c.title.substring(position+11).trim());}
+            catch(NumberFormatException ignored){}
+        return identity(c.seed^(VARIATION_SALT*variation),style);
     }
     /** Import and historical composition playback retain their original mapping. */
     public static int gmProgram(Composition c,String role){
