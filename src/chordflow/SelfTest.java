@@ -102,16 +102,19 @@ public final class SelfTest {
             for(int song=0;song<18;song++){
                 Composition piece=MusicV4.generate(9000L+song,48,"flow","noir",style);
                 StringBuilder pattern=new StringBuilder(),firstBar=new StringBuilder();
+                boolean gmValid=true,laneValid=true;
                 for(Composition.Drum hit:piece.drums){
                     int gm=DrumComposer.gmPitch(piece,hit);
-                    check(gm>=35&&gm<=59,"percussion-general-midi-"+style+"-"+song+"-"+hit.kind());
+                    gmValid&=gm>=35&&gm<=59;
                     int lane=Visual.percussionLane(hit.kind());
-                    check(lane>=0&&lane<=3,"percussion-shown-in-lane-"+style+"-"+song+"-"+hit.kind());
+                    laneValid&=lane>=0&&lane<=3;
                     long ticks=Math.round(hit.start()*piece.bpm/60*16);
                     String token=hit.kind()+"@"+ticks+";";
                     if(ticks<128)pattern.append(token);
                     if(ticks<64)firstBar.append(token);
                 }
+                check(gmValid,"percussion-general-midi-"+style+"-"+song);
+                check(laneValid,"percussion-shown-in-lane-"+style+"-"+song);
                 drumFingerprints.add(pattern.toString());
                 firstBarPockets.add(firstBar.toString());
             }
