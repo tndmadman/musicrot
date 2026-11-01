@@ -23,6 +23,29 @@ public final class InstrumentPerformance {
         if(role.equals("bass"))return style.equals("funk")?.78:.90;
         return .90;
     }
+    /** Keep each part in a credible register for its selected instrument.
+     * Octave shifts preserve the pitch class and harmonic function. */
+    private static int register(int pitch,int program,String role){
+        int lo,hi;
+        if(role.equals("bass")){
+            lo=(program==42||program==43)?36:28;
+            hi=(program==42||program==43)?65:60;
+        }else if(program==42||program==43){lo=48;hi=76;}
+        else if(program==40){lo=55;hi=94;}
+        else if(program==65||program==56||program==60){lo=55;hi=84;}
+        else if(program==73){lo=60;hi=95;}
+        else if(program>=24&&program<=31){lo=48;hi=83;}
+        else if(role.equals("pad")||role.equals("arp")){lo=48;hi=88;}
+        else {lo=52;hi=90;}
+        int best=pitch,distance=Integer.MAX_VALUE;
+        for(int octave=-4;octave<=4;octave++){
+            int candidate=pitch+12*octave;
+            if(candidate<lo||candidate>hi)continue;
+            int delta=Math.abs(candidate-pitch);
+            if(delta<distance){best=candidate;distance=delta;}
+        }
+        return distance==Integer.MAX_VALUE?pitch:best;
+    }
     public static void apply(List<Composition.Note> notes,Map<String,Integer> programs,
                              String style,long seed,double bpm,int seconds){
         double beat=60.0/bpm;
@@ -47,7 +70,8 @@ public final class InstrumentPerformance {
             value^=value>>>33;value*=0xc4ceb9fe1a85ec53L;
             int variation=(int)Math.floorMod(value,9)-4;
             int velocity=Math.max(28,Math.min(122,n.velocity()+(strong?3:0)+variation));
-            notes.set(i,new Composition.Note(n.voice(),n.pitch(),n.start(),duration,velocity));
+            notes.set(i,new Composition.Note(n.voice(),
+                register(n.pitch(),patch,role),n.start(),duration,velocity));
         }
     }
 }
