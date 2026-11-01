@@ -63,6 +63,11 @@ public final class MusicV4 {
     /** Select the musical ensemble BEFORE creating the accompaniment notes. */
     public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,
                                        int variation,String instrumentPreference){
+        return generate(seed,seconds,mode,theme,requestedStyle,variation,instrumentPreference,Map.of());
+    }
+    public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,
+                                       int variation,String instrumentPreference,Map<String,Integer> overrides){
+        if(overrides==null)throw new IllegalArgumentException("INSTRUMENT_SELECTION_MISSING");
         if(variation<0||variation>12)throw new IllegalArgumentException("INVALID_COMPOSITION_VARIATION");
         if(!Composition.PRESETS.contains(instrumentPreference))
             throw new IllegalArgumentException("INSTRUMENT_PRESET_INVALID");
@@ -82,7 +87,10 @@ public final class MusicV4 {
         double beat=60.0/tempo,totalBeats=seconds/beat;
         Plan plan=new Plan(planSeed,style,key,minor,tempo,beat,totalBeats,progressions,minor?MINOR:MAJOR,guitar,r.nextInt(7));
         // The band is chosen as a unit, not as independent random MIDI patches.
-        EnsembleCatalog.Ensemble ensemble=EnsembleCatalog.select(planSeed,style.id(),instrumentPreference);
+        EnsembleCatalog.Ensemble ensemble=InstrumentRegistry.customize(
+            EnsembleCatalog.select(planSeed,style.id(),instrumentPreference),overrides);
+        if(guitar&&overrides.containsKey("lead"))
+            InstrumentRegistry.validate("guitar",overrides.get("lead"));
         List<Composition.Harmony> harmony=harmonize(plan,r,seconds);
         List<Composition.Note> notes=new ArrayList<>();
         // Newly generated songs are entirely instrument-led. No automatic drum events.
@@ -93,12 +101,26 @@ public final class MusicV4 {
         SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes,ensemble);
         notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
         List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
-        // ensemble-v5 title marker maintains exact instrument mapping for
-        // saved compositions and distinguishes legacy V4 replay behavior.
+        // Freeze programs in the composition; a later catalog change must not
+        // silently alter the sounds of a previously produced song.
+        Map<String,Integer> programs=new LinkedHashMap<>();
+        int guitarPatch=overrides.getOrDefault("guitar",
+            overrides.getOrDefault("lead",EnsembleCatalog.guitarProgram(style.id(),planSeed)));
+        if(guitar)InstrumentRegistry.validate("guitar",guitarPatch);
+        for(Composition.Note note:notes){
+            String voice=note.voice();
+            String role=voice.startsWith("lead")?"lead":voice.startsWith("bass")?"bass":
+                voice.startsWith("guitar")?"guitar":voice.startsWith("pad")?"pad":
+                voice.startsWith("arp")?"arp":null;
+            if(role==null||programs.containsKey(role))continue;
+            int patch=guitar&&(role.equals("lead")||role.equals("guitar"))?guitarPatch:ensemble.program(role);
+            programs.put(role,patch);
+        }
+        // ensemble-v5 title marker preserves the archived V5 format.
         Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed+" ensemble-v5 variation "+variation,mode,theme,
             "ORIGINAL_GENERATED",ROOTS[key],minor?"minor":"major",tempo,seconds,
             snapshots,notes,List.of(new Composition.Tempo(0,tempo)),
-            instrumentPreference,harmony,drums,true);
+            instrumentPreference,harmony,drums,true,programs);
         MusicQuality.ensureBasicIntegrity(output);
         return output;
     }
