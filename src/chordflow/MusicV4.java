@@ -73,6 +73,16 @@ public final class MusicV4 {
     public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,
                                        int variation,String instrumentPreference,Map<String,Integer> overrides,
                                        int requestedBpm,int requestedKey){
+        return generate(seed,seconds,mode,theme,requestedStyle,variation,instrumentPreference,
+            overrides,requestedBpm,requestedKey,"auto");
+    }
+    public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,
+                                       int variation,String instrumentPreference,Map<String,Integer> overrides,
+                                       int requestedBpm,int requestedKey,String requestedScale){
+        if(!Set.of("auto","major","minor").contains(requestedScale))
+            throw new IllegalArgumentException("INVALID_MUSICAL_SCALE");
+        if(mode.equals("guitar")&&requestedScale.equals("minor"))
+            throw new IllegalArgumentException("GUITAR_MODE_REQUIRES_MAJOR_SCALE");
         if(requestedBpm!=0&&(requestedBpm<35||requestedBpm>220))
             throw new IllegalArgumentException("MANUAL_BPM_OUT_OF_RANGE");
         if(requestedKey<-1||requestedKey>11||(mode.equals("guitar")&&requestedKey>0))
@@ -92,7 +102,9 @@ public final class MusicV4 {
         if(requestedStyle.equals("auto"))style=STYLES[Math.floorMod(seed,STYLES.length)];
         else for(Style s:STYLES)if(s.id().equals(requestedStyle))style=s;
         if(style==null)throw new IllegalArgumentException("INVALID_MUSIC_STYLE");
-        boolean guitar=mode.equals("guitar"),minor=!guitar&&r.nextBoolean();
+        boolean guitar=mode.equals("guitar");
+        boolean minor=!guitar&&(requestedScale.equals("minor")||
+            requestedScale.equals("auto")&&r.nextBoolean());
         // The guitar library is deliberately C-major/Am-compatible. Never apply an unrelated key.
         int key=requestedKey>=0?requestedKey:guitar?0:r.nextInt(12);
         int tempo=requestedBpm>0?requestedBpm:style.bpmMin()+r.nextInt(style.bpmMax()-style.bpmMin()+1);
