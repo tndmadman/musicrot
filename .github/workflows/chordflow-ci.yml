@@ -1,0 +1,89 @@
+name: ChordFlow Java 20 and 21 compatibility
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+jobs:
+  java-linux:
+    name: java-linux-jdk${{ matrix.java }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['20', '21']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: bash scripts/build.sh
+      - name: Verify Java 20 compatible classes
+        run: |
+          javap -verbose -classpath build chordflow.Main | grep 'major version: 64'
+      - run: python3 tests/integration_queue_delete_seed.py
+      - run: python3 tests/integration_queue_v2.py
+      - run: java -Djava.awt.headless=true -cp build chordflow.Main render --seed 44 --seconds 2 --mode guitar --width 240 --height 426 --encoder x264 --out output
+      - name: Validate MP4 codec
+        run: |
+          ffprobe -v error -show_entries stream=codec_name,codec_type,width,height -of json "$(find output -maxdepth 1 -name 'chordflow-44-guitar-240-*.mp4' -print -quit)"
+  java-windows:
+    name: java-windows-jdk${{ matrix.java }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['20', '21']
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Ensure FFmpeg and ffprobe
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+            Write-Host 'Installing FFmpeg from the published Windows essentials archive'
+            $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg-essentials.zip'
+            $target = Join-Path $env:RUNNER_TEMP 'ffmpeg-essentials'
+            Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile $archive -TimeoutSec 180
+            Expand-Archive -LiteralPath $archive -DestinationPath $target -Force
+            $ff = Get-ChildItem -LiteralPath $target -Filter ffmpeg.exe -File -Recurse | Select-Object -First 1
+            if (-not $ff -or -not (Test-Path (Join-Path $ff.Directory.FullName 'ffprobe.exe'))) { throw 'FFmpeg/ffprobe missing from downloaded essentials archive' }
+            $env:PATH = $ff.Directory.FullName + [IO.Path]::PathSeparator + $env:PATH
+            Add-Content -Path $env:GITHUB_PATH -Value $ff.Directory.FullName
+          }
+          $ffVersion = @(& ffmpeg -version)
+          if ($LASTEXITCODE -ne 0 -or $ffVersion.Count -eq 0) { throw 'FFmpeg did not start' }
+          Write-Host $ffVersion[0]
+          $probeVersion = @(& ffprobe -version)
+          if ($LASTEXITCODE -ne 0 -or $probeVersion.Count -eq 0) { throw 'FFprobe did not start' }
+          Write-Host $probeVersion[0]
+      - run: ./scripts/build.ps1
+      - name: Verify Java 20 compatible classes
+        run: |
+          $version = (javap -verbose -classpath build chordflow.Main | Select-String 'major version:').ToString()
+          if ($version -notmatch 'major version: 64') { throw "Expected Java 20 classfile, got $version" }
+      - name: Verify Windows batch build launcher
+        run: |
+          cmd.exe /d /c "Build-ChordFlow.bat --no-pause"
+          if ($LASTEXITCODE -ne 0) { throw 'Build-ChordFlow.bat failed' }
+          foreach ($path in @('command_center_windows.bat', 'Start-ChordFlow.bat', 'Start-Controller.bat', 'Start-Worker.bat', 'scripts/controller-health.ps1', 'scripts/start-companion.ps1')) {
+            if (-not (Test-Path $path)) { throw "Missing launcher: $path" }
+          }
+      - run: python tests/integration_queue_delete_seed.py
+      - run: python tests/integration_queue_v2.py
+      - name: One-click Windows command center plus worker end-to-end smoke
+        run: ./tests/windows_one_click_smoke.ps1
+      - name: Render Windows 2s smoke
+        run: |
+          java '-Djava.awt.headless=true' -cp build chordflow.Main render --seed 45 --seconds 2 --mode flow --width 240 --height 426 --encoder x264 --out output
+          if ($LASTEXITCODE -ne 0) { throw 'Render failed' }
+          ffprobe -v error -show_entries stream=codec_name,codec_type,width,height -of json (Get-ChildItem output -Filter 'chordflow-45-flow-240-*.mp4' | Select-Object -First 1).FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Media audit failed' }
