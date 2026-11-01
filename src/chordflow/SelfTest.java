@@ -90,6 +90,13 @@ public final class SelfTest {
             "manual-bpm-key-and-instruments-honored");
         fails(()->MusicV4.generate(1,20,"guitar","noir","rock",0,"auto-ensemble",
             Map.of(),110,7),"guitar-key-constraint-enforced");
+        Composition plucked=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            Map.of("lead",27,"bass",32,"pad",4,"arp",-1));
+        Composition.Note windNote=custom.notes.stream().filter(n->n.voice().startsWith("lead")).findFirst().orElseThrow();
+        Composition.Note guitarNote=plucked.notes.stream().filter(n->n.voice().startsWith("lead")).findFirst().orElseThrow();
+        check(windNote.pitch()==guitarNote.pitch()&&
+            Math.abs(windNote.duration()-guitarNote.duration())>.01,
+            "lead-instrument-affects-performance-articulation");
         check(custom.instrumentPrograms.get("lead")==65&&custom.instrumentPrograms.get("bass")==32
             &&custom.instrumentPrograms.get("pad")==4&&!custom.instrumentPrograms.containsKey("arp"),
             "manual-instrument-patches-frozen");
