@@ -85,7 +85,7 @@ public final class SongArrangement {
             for(int bar=firstBar;bar<lastBar;bar++){
                 int sec=section(id,bar,bars);
                 double e=energy(sec);
-                double[] bp=bassPattern(id.bass(),style);
+                double[] bp=bassPattern(id.bass(),style,bar,id.groove());
                 for(int j=0;j<bp.length;j++){
                     double at=bar*4.0+bp[j];
                     if(at<from+.12||at>=to-.04||at>=total-.04)continue;
@@ -157,9 +157,9 @@ public final class SongArrangement {
         }
         return out;
     }
-    private static double[] bassPattern(int n,String style){
-        if(style.equals("ambient")&&n%2==0)return new double[]{0,2.75};
-        return switch(n){
+    private static double[] bassPattern(int n,String style,int bar,int groove){
+        if(style.equals("ambient")&&n%2==0)return new double[]{0,bar%4==3?3.0:2.75};
+        double[] pattern=switch(n){
             case 0->new double[]{0,2,3.5};
             case 1->new double[]{0,1,2,3};
             case 2->new double[]{0,.75,2.5,3.25};
@@ -167,6 +167,14 @@ public final class SongArrangement {
             case 4->new double[]{0,2.5};
             default->new double[]{0,.5,1.75,2.5,3.5};
         };
+        // Fourth-bar pickups and answer-phrase offsets add rhythmic development
+        // without injecting a second percussion or metronome pipeline.
+        if(pattern.length>2&&bar%4==3){
+            pattern[pattern.length-1]=Math.min(3.75,pattern[pattern.length-1]+.25);
+        }else if(pattern.length>2&&(bar/4+groove)%3==1){
+            pattern[1]=Math.min(3.75,pattern[1]+.25);
+        }
+        return pattern;
     }
     private static void pad(List<Composition.Note> notes,int[] voiced,double from,double length,
                             double energy,double beat,int seconds){
