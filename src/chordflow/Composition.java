@@ -33,6 +33,8 @@ public final class Composition {
     public final List<Harmony> harmony;
     public final List<Drum> drums;
     public final boolean arranged;
+    /** Frozen per-role MIDI programs, independent of future catalog changes. */
+    public final Map<String,Integer> instrumentPrograms;
     public Composition(long seed,String title,String mode,String theme,String rights,double bpm,double duration,List<Chord> chords,List<Note> notes){
         this(seed,title,mode,theme,rights,"unclassified","unclassified",bpm,duration,chords,notes);
     }
@@ -48,6 +50,12 @@ public final class Composition {
     public Composition(long seed,String title,String mode,String theme,String rights,String key,String scaleMode,double bpm,double duration,
                        List<Chord> chords,List<Note> notes,List<Tempo> tempos,String preset,
                        List<Harmony> harmony,List<Drum> drums,boolean arranged){
+        this(seed,title,mode,theme,rights,key,scaleMode,bpm,duration,chords,notes,tempos,preset,harmony,drums,arranged,Map.of());
+    }
+    public Composition(long seed,String title,String mode,String theme,String rights,String key,String scaleMode,double bpm,double duration,
+                       List<Chord> chords,List<Note> notes,List<Tempo> tempos,String preset,
+                       List<Harmony> harmony,List<Drum> drums,boolean arranged,Map<String,Integer> programs){
+        this.instrumentPrograms=Map.copyOf(Objects.requireNonNull(programs));
         this.seed=seed;this.title=title;this.mode=mode;this.theme=theme;this.rights=rights;this.key=key;this.scaleMode=scaleMode;this.bpm=bpm;this.duration=duration;
         this.chords=List.copyOf(chords);this.notes=List.copyOf(notes);this.tempoMap=List.copyOf(tempos);this.instrumentPreset=preset;
         this.harmony=List.copyOf(harmony);this.drums=List.copyOf(drums);this.arranged=arranged;validate();
@@ -75,6 +83,7 @@ public final class Composition {
         throw new IllegalStateException("TEMPO_MAP_INCOMPLETE");
     }
     public void validate(){
+        for(var entry:instrumentPrograms.entrySet())InstrumentRegistry.validate(entry.getKey(),entry.getValue());
         if(!PRESETS.contains(instrumentPreset))throw new IllegalArgumentException("INSTRUMENT_PRESET_INVALID");
         if(tempoMap.isEmpty()||tempoMap.get(0).beat()!=0)throw new IllegalArgumentException("TEMPO_MAP_MISSING_START");
         double priorBeat=-1;
@@ -140,7 +149,13 @@ public final class Composition {
     }
     public static String pitchName(int midi){String[] names={"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"};return names[midi%12]+(midi/12-1);}
     public String json(){
-        StringBuilder b=new StringBuilder();b.append("{\"schemaVersion\":").append(arranged?3:2).append(",\"seed\":").append(seed).append(",\"title\":").append(q(title)).append(",\"key\":").append(q(key)).append(",\"scaleMode\":").append(q(scaleMode)).append(",\"mode\":").append(q(mode)).append(",\"theme\":").append(q(theme)).append(",\"rights\":").append(q(rights)).append(",\"instrumentPreset\":").append(q(instrumentPreset)).append(",\"bpm\":").append(bpm).append(",\"durationSeconds\":").append(duration).append(",\"meter\":\"4/4\",\"chordEvents\":[");
+        StringBuilder b=new StringBuilder();b.append("{\"schemaVersion\":").append(arranged?3:2).append(",\"seed\":").append(seed).append(",\"title\":").append(q(title)).append(",\"key\":").append(q(key)).append(",\"scaleMode\":").append(q(scaleMode)).append(",\"mode\":").append(q(mode)).append(",\"theme\":").append(q(theme)).append(",\"rights\":").append(q(rights)).append(",\"instrumentPreset\":").append(q(instrumentPreset)).append(",\"instrumentPrograms\":{");
+        int selectedIndex=0;
+        for(var entry:new TreeMap<>(instrumentPrograms).entrySet()){
+            if(selectedIndex++>0)b.append(',');
+            b.append(q(entry.getKey())).append(':').append(entry.getValue());
+        }
+        b.append("},\"bpm\":").append(bpm).append(",\"durationSeconds\":").append(duration).append(",\"meter\":\"4/4\",\"chordEvents\":[");
         for(int i=0;i<chords.size();i++){Chord c=chords.get(i);if(i>0)b.append(',');b.append("{\"startSeconds\":").append(c.start()).append(",\"durationSeconds\":").append(c.duration()).append(",\"symbol\":").append(q(c.symbol())).append(",\"midiPitches\":").append(Arrays.toString(c.pitches())).append(",\"frets\":").append(c.frets()==null?"null":Arrays.toString(c.frets())).append('}');}
         b.append("],\"noteEvents\":[");for(int i=0;i<notes.size();i++){Note n=notes.get(i);if(i>0)b.append(',');b.append("{\"voiceId\":").append(q(n.voice())).append(",\"midiPitch\":").append(n.pitch()).append(",\"startSeconds\":").append(n.start()).append(",\"durationSeconds\":").append(n.duration()).append(",\"velocity\":").append(n.velocity()).append('}');}b.append("],\"tempoMap\":[");for(int i=0;i<tempoMap.size();i++){Tempo t=tempoMap.get(i);if(i>0)b.append(',');b.append("{\"beat\":").append(t.beat()).append(",\"bpm\":").append(t.bpm()).append('}');}b.append(']');
         if(arranged){
