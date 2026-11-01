@@ -113,6 +113,31 @@ public final class SongArrangement {
             boolean hasPad=ensemble.supports("pad");
             boolean hasArp=ensemble.supports("arp");
             double gap=(id.backing()%2==0?.5:.75);
+            if(ensemble.name().startsWith("Custom ")){
+                // Honor every explicitly selected role, even when the backing
+                // preset would ordinarily skip it or the chord is short.
+                if(hasPad){
+                    if(ensemble.backing().equals("sustain")||ensemble.backing().equals("space"))
+                        pad(notes,voiced,from,Math.min(to-from,4.0),.50*e,beat,seconds);
+                    else
+                        for(double at=from;at<to-.04;at+=2.0)
+                            pad(notes,voiced,at,Math.min(.55,to-at),.47*e,beat,seconds);
+                }
+                if(hasArp){
+                    double start=from+Math.min(.25,(to-from)*.2);
+                    double pace=style.equals("ambient")||style.equals("cinematic")?2.0:
+                        style.equals("funk")?.75:1.25;
+                    arp(notes,voiced,start,to,pace,id.backing(),hasPad?.36*e:.59*e,beat,seconds);
+                    if(notes.stream().noneMatch(n->n.voice().startsWith("arp")&&
+                        n.start()>=h.start()&&n.start()<h.start()+h.duration())){
+                        // A short chord must not silently erase a selected instrument.
+                        int tone=voiced.length>1?voiced[1]:voiced[0];
+                        addNote(notes,"arp-0",tone,from,Math.min(.20,to-from),
+                            Math.max(31,(int)(45*e)),beat,seconds);
+                    }
+                }
+                continue;
+            }
             switch(ensemble.backing()){
                 case "sustain"->{
                     if(hasPad)pad(notes,voiced,from,Math.min(to-from,5.5),.66*e,beat,seconds);
