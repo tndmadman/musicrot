@@ -80,7 +80,10 @@ public final class Visual {
         }
         g.setColor(accent);g.setStroke(new BasicStroke((float)(1.6*scale)));
         g.draw(new Line2D.Double(playX,h*.251,playX,h*.68));
-        if(c.arranged&&c.drums.size()>0)drawBeat(t,scale);
+        if(c.arranged){
+            if(c.drums.isEmpty())drawInstrumentRhythm(t,scale);
+            else drawBeat(t,scale); // archive/import only: show real MIDI percussion
+        }
         if(c.mode.equals("guitar"))drawGuitar(current,scale);
         g.setColor(muted);g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(9,(int)(12*scale))));
         g.drawString("MELODY  /  BASS  /  HARMONY",(int)(w*.085),(int)(h*.946));
@@ -90,19 +93,133 @@ public final class Visual {
         // Pitch range 36–88 is scaled into the notation pane to avoid clipped bass or lead.
         return cy-(pitch-61)*h*.00765;
     }
+    /** Every canonical percussion hit occupies its own lane at its exact time.
+     * This uses the same Composition.Drum events consumed by MIDI/FluidSynth;
+     * there are no fake display-only beat markers or kick-over-snare priority.
+     */
+    static int percussionLane(String kind){
+        return switch(kind){
+            case "kick"->0;
+            case "snare","clap","rim"->1;
+            case "hat","open-hat","ride"->2;
+            case "tom","crash"->3;
+            default->throw new IllegalArgumentException("UNKNOWN_PERCUSSION "+kind);
+        };
+    }
     private void drawBeat(double t,double scale){
-        double beat=60/c.bpm;
-        double x=w*.085,y=h*.70,step=(w*.83)/16;
-        g.setColor(muted);g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(9,(int)(11*scale))));
-        g.drawString("RHYTHM",(int)x,(int)(y-14*scale));
-        for(int i=0;i<16;i++){
-            double beatTime=(Math.floor(t/(4*beat))*4+i*.25)*beat;
-            boolean kick=false,snare=false,hat=false;
-            for(Composition.Drum d:c.drums){if(Math.abs(d.start()-beatTime)<beat*.12){if(d.kind().equals("kick"))kick=true;else if(d.kind().equals("snare"))snare=true;else hat=true;}}
-            int bar=(int)(x+i*step), yy=(int)y;
-            g.setColor(kick?accent:snare?fg:hat?muted:grid);
-            g.fillRoundRect(bar,yy,(int)(step*.54),Math.max(2,(int)((kick?16:snare?12:hat?7:3)*scale)),3,3);
+        double beat=60.0/c.bpm;
+        int bar=(int)Math.floor(t/(4*beat));
+        double barStart=bar*4*beat;
+        double startX=w*.31,endX=w*.92,width=endX-startX;
+        double y0=h*.695,rowHeight=h*.019;
+        String[] labels={"KICK","SNARE / CLAP","HATS / RIDE","TOMS / FX"};
+        g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(9,(int)(10*scale))));
+        g.setColor(muted);
+        g.drawString("LIVE DRUM EVENTS", (int)(w*.085),(int)(y0-13*scale));
+        for(int lane=0;lane<labels.length;lane++){
+            double y=y0+lane*rowHeight;
+            g.setColor(muted);
+            g.drawString(labels[lane],(int)(w*.085),(int)(y+6*scale));
+            g.setColor(grid);
+            g.setStroke(new BasicStroke(Math.max(.7f,(float)(.6*scale))));
+            g.draw(new Line2D.Double(startX,y+5*scale,endX,y+5*scale));
         }
+        for(int step=0;step<=16;step++){
+            double x=startX+width*step/16;
+            g.setColor(step%4==0?muted:grid);
+            g.setStroke(new BasicStroke((float)((step%4==0?1.0:.45)*scale)));
+            g.draw(new Line2D.Double(x,y0-3*scale,x,y0+3*rowHeight+10*scale));
+        }
+        // Mark each event separately. Simultaneous kick + snare + hat now
+        // appear in three rows rather than one blended rectangle.
+        for(Composition.Drum d:c.drums){
+            double offset=d.start()-barStart;
+            if(offset<-.000001||offset>=4*beat-.000001)continue;
+            int lane=percussionLane(d.kind());
+            double x=startX+width*offset/(4*beat);
+            double y=y0+lane*rowHeight;
+            boolean active=t>=d.start()&&t<d.start()+Math.min(.11,beat*.20);
+            Color ink=lane==0?accent:lane==1?fg:lane==2?muted:melody;
+            g.setColor(ink);
+            double height=(active?12:8)*scale;
+            double marker=lane==0?7*scale:lane==1?6*scale:4.5*scale;
+            if(d.kind().equals("open-hat")||d.kind().equals("crash"))
+                g.draw(new Ellipse2D.Double(x-marker/2,y+4*scale-marker/2,marker,marker));
+            else
+                g.fill(new RoundRectangle2D.Double(x-marker/2,y+4*scale-height/2,
+                    marker,height,3*scale,3*scale));
+            if(active){
+                g.setColor(fg);
+                g.setStroke(new BasicStroke((float)(1.2*scale)));
+                g.draw(new Ellipse2D.Double(x-8*scale,y-4*scale,16*scale,16*scale));
+            }
+        }
+        // This moving cursor is the playback position within the actual bar,
+        // not the stationary percussive pattern shown in previous versions.
+        double progress=Math.max(0,Math.min(1,(t-barStart)/(4*beat)));
+        double cursor=startX+width*progress;
+        g.setColor(accent);
+        g.setStroke(new BasicStroke((float)(1.4*scale)));
+        g.draw(new Line2D.Double(cursor,y0-6*scale,
+            cursor,y0+3*rowHeight+12*scale));
+    }
+    /**
+     * New generated videos use the real instrument note onsets as the beat cue.
+     * No procedural kick/snare/clap/metronome events or visually invented hits.
+     * Bass, melodic and accompaniment onsets are the MIDI/audio source of truth.
+     */
+    static int instrumentRhythmLane(String voice){
+        if(voice.startsWith("bass"))return 0;
+        if(voice.startsWith("lead"))return 1;
+        return 2; // piano / guitar / pad / arpeggio
+    }
+    private void drawInstrumentRhythm(double t,double scale){
+        double beat=60.0/c.bpm;
+        int bar=(int)Math.floor(t/(4*beat));
+        double start=bar*4*beat;
+        double left=w*.31,right=w*.92,width=right-left;
+        double y0=h*.695,rowHeight=h*.019;
+        String[] labels={"BASS","MELODY","INSTRUMENTS"};
+        g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(9,(int)(10*scale))));
+        g.setColor(muted);
+        g.drawString("LIVE NOTE RHYTHM",(int)(w*.085),(int)(y0-13*scale));
+        for(int lane=0;lane<3;lane++){
+            double y=y0+lane*rowHeight;
+            g.setColor(muted);g.drawString(labels[lane],(int)(w*.085),(int)(y+6*scale));
+            g.setColor(grid);
+            g.setStroke(new BasicStroke(Math.max(.7f,(float)(.6*scale))));
+            g.draw(new Line2D.Double(left,y+5*scale,right,y+5*scale));
+        }
+        for(int step=0;step<=16;step++){
+            double x=left+width*step/16.0;
+            g.setColor(step%4==0?muted:grid);
+            g.setStroke(new BasicStroke((float)((step%4==0?1.0:.45)*scale)));
+            g.draw(new Line2D.Double(x,y0-3*scale,x,y0+2*rowHeight+10*scale));
+        }
+        // Actual note-on events, including off-grid timing; every marker is
+        // also audible and represented by the same composition's MIDI file.
+        for(Composition.Note n:c.notes){
+            double offset=n.start()-start;
+            if(offset<-.000001||offset>=4*beat-.000001)continue;
+            int lane=instrumentRhythmLane(n.voice());
+            double x=left+width*offset/(4*beat),y=y0+lane*rowHeight;
+            boolean active=t>=n.start()&&t<n.start()+Math.min(.11,beat*.20);
+            Color ink=lane==0?bass:lane==1?melody:accomp;
+            g.setColor(ink);
+            double marker=(lane==0?6.0:lane==1?5.5:4.0)*scale;
+            g.fill(new RoundRectangle2D.Double(x-marker/2,y+4*scale-marker/2,
+                marker,active?11*scale:7*scale,2*scale,2*scale));
+            if(active){
+                g.setColor(fg);
+                g.setStroke(new BasicStroke((float)(1.2*scale)));
+                g.draw(new Ellipse2D.Double(x-8*scale,y-4*scale,16*scale,16*scale));
+            }
+        }
+        double progress=Math.max(0,Math.min(1,(t-start)/(4*beat)));
+        double cursor=left+width*progress;
+        g.setColor(accent);
+        g.setStroke(new BasicStroke((float)(1.4*scale)));
+        g.draw(new Line2D.Double(cursor,y0-6*scale,cursor,y0+2*rowHeight+12*scale));
     }
     private void drawGuitar(Composition.Harmony harmonic,double scale){
         int[] frets=harmonic.frets();if(frets==null)return;

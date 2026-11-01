@@ -9,3 +9,6 @@ stress-output/
 *.mid
 *.composition.json
 stress-report.json
+# Locally installed third-party instrument samples (not redistributed)
+soundfonts/
+tools/fluidsynth/

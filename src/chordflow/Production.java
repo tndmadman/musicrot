@@ -20,7 +20,7 @@ public final class Production {
         Path temp=Files.createTempDirectory(out,".cf-partial-");
         try{
             Path midi=temp.resolve("composition.mid"),json=temp.resolve("composition.json"),wav=temp.resolve("audio.wav"),candidate=temp.resolve("candidate.mp4");
-            c.save(json);Music.writeMidi(c,midi);Audio.Stats audio=Audio.synth(c,wav);
+            c.save(json);Music.writeMidi(c,midi);Audio.Stats audio=Audio.synthProduction(c,wav);
             List<String> encoders=encoder.equals("auto")?List.of("h264_nvenc","libx264"):List.of(encoder.equals("nvenc")?"h264_nvenc":"libx264");
             String chosen=null;List<String> failures=new ArrayList<>();
             for(String enc:encoders){

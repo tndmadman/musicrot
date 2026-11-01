@@ -8,7 +8,31 @@ import java.util.*;
 public final class Audio {
     public static final int RATE=48000;
     public record Stats(double peak,double rms,double silenceFraction) {}
+    /**
+     * Published videos use actual sampled instrument recordings by default.
+     * Only an explicit operator choice of "preview" permits procedural audio.
+     * Self-tests and lightweight previews continue to call synth() directly.
+     */
+    public static Stats synthProduction(Composition c,Path wav)throws IOException{
+        String quality=System.getenv().getOrDefault("CHORDFLOW_AUDIO_QUALITY","sampled");
+        if(!Set.of("auto","sampled","preview").contains(quality))
+            throw new IOException("CHORDFLOW_AUDIO_QUALITY_INVALID");
+        if(quality.equals("preview")){
+            System.err.println("WARNING SYNTHETIC_PREVIEW_AUDIO: not natural instrument sound");
+            return synthPreview(c,wav);
+        }
+        return SampledAudio.synth(c,wav);
+    }
     public static Stats synth(Composition c,Path wav)throws IOException{
+        String quality=System.getenv().getOrDefault("CHORDFLOW_AUDIO_QUALITY","preview");
+        if(!Set.of("auto","sampled","preview").contains(quality))
+            throw new IOException("CHORDFLOW_AUDIO_QUALITY_INVALID");
+        if(quality.equals("sampled")||(quality.equals("auto")&&SampledAudio.configured()))
+            return SampledAudio.synth(c,wav);
+        return synthPreview(c,wav);
+    }
+    private static Stats synthPreview(Composition c,Path wav)throws IOException{
+        // Portable synthetic tones are explicitly a preview-only fallback.
         int samples=(int)Math.round(c.duration*RATE);
         if(samples<1)throw new IOException("AUDIO_DURATION_INVALID");
         float[] left=new float[samples],right=new float[samples];
@@ -61,10 +85,32 @@ public final class Audio {
             double env=Math.min(1,elapsed/attack)*Math.min(1,remaining/release);
             double decay=guitar?Math.exp(-2.1*elapsed):arp?Math.exp(-1.5*elapsed):bass?Math.exp(-.33*elapsed):lead?.85+.15*Math.exp(-elapsed):1;
             double tone;
-            if(bass)tone=Math.sin(phase)+.23*Math.sin(2*phase)+.065*Math.sin(3*phase);
-            else if(lead)tone=Math.sin(phase)+.28*Math.sin(2*phase)+.13*Math.sin(3*phase);
-            else if(guitar)tone=Math.sin(phase)+.36*Math.sin(2*phase)+.19*Math.sin(3*phase)+.085*Math.sin(4*phase);
-            else if(arp)tone=Math.sin(phase)+.24*Math.sin(3*phase)+.09*Math.sin(5*phase);
+            if(bass)tone=switch(preset){
+                case "glass"->Math.sin(phase)+.12*Math.sin(3*phase);
+                case "layered"->Math.sin(phase)+.32*Math.sin(2*phase)+.08*Math.sin(phase*.998);
+                case "nylon-pluck"->Math.sin(phase)+.14*Math.sin(2*phase);
+                default->Math.sin(phase)+.23*Math.sin(2*phase)+.065*Math.sin(3*phase);
+            };
+            else if(lead)tone=switch(preset){
+                case "glass"->Math.sin(phase+.26*Math.sin(2.01*phase))+.21*Math.sin(4*phase);
+                case "nylon-pluck"->Math.sin(phase)+.45*Math.sin(2*phase)+.23*Math.sin(3*phase);
+                case "layered"->Math.sin(phase)+.27*Math.sin(2*phase)+.09*Math.sin(phase*1.004);
+                case "warm-pad"->Math.sin(phase)+.15*Math.sin(2*phase);
+                default->Math.sin(phase)+.28*Math.sin(2*phase)+.13*Math.sin(3*phase);
+            };
+            else if(guitar)tone=switch(preset){
+                case "glass"->Math.sin(phase)+.31*Math.sin(5*phase);
+                case "layered"->Math.sin(phase)+.48*Math.sin(2*phase)+.20*Math.sin(3*phase)+.12*Math.sin(5*phase);
+                case "warm-pad"->Math.sin(phase)+.12*Math.sin(2*phase);
+                case "soft-keys"->Math.sin(phase)+.24*Math.sin(2*phase)+.12*Math.sin(3*phase);
+                default->Math.sin(phase)+.36*Math.sin(2*phase)+.19*Math.sin(3*phase)+.085*Math.sin(4*phase);
+            };
+            else if(arp)tone=switch(preset){
+                case "glass"->Math.sin(phase+.23*Math.sin(2*phase))+.12*Math.sin(5*phase);
+                case "layered"->Math.sin(phase)+.21*Math.sin(2*phase)+.18*Math.sin(phase*1.003);
+                case "nylon-pluck"->Math.sin(phase)+.37*Math.sin(2*phase)+.17*Math.sin(4*phase);
+                default->Math.sin(phase)+.24*Math.sin(3*phase)+.09*Math.sin(5*phase);
+            };
             else tone=switch(preset){
                 case "soft-keys"->Math.sin(phase)+.38*Math.sin(2*phase)+.14*Math.sin(3*phase);
                 case "nylon-pluck"->Math.sin(phase)+.30*Math.sin(2*phase)+.10*Math.sin(3*phase);
@@ -80,18 +126,39 @@ public final class Audio {
     private static void renderDrum(Composition.Drum hit,long seed,float[] left,float[] right){
         int start=(int)Math.round(hit.start()*RATE);
         double level=hit.velocity()/127.0;
-        boolean kick=hit.kind().equals("kick"),snare=hit.kind().equals("snare");
-        int length=(int)(RATE*(kick?.34:snare?.22:hit.kind().equals("open-hat")?.33:.105));
+        String kind=hit.kind();
+        boolean kick=kind.equals("kick"),snare=kind.equals("snare"),
+            clap=kind.equals("clap"),rim=kind.equals("rim"),tom=kind.equals("tom"),
+            metallic=kind.equals("ride")||kind.equals("crash");
+        double duration=switch(kind){
+            case "kick"->.34;case "snare"->.22;case "clap"->.28;
+            case "rim"->.09;case "tom"->.29;case "open-hat"->.32;
+            case "ride"->.55;case "crash"->.9;default->.11;
+        };
+        int length=(int)(RATE*duration);
         int rng=(int)(seed^(seed>>>32))|1;double phase=0;
         for(int i=0;i<length&&start+i<left.length;i++){
-            double t=i/(double)RATE,env=Math.exp(-t*(kick?18:snare?24:43));
+            double t=i/(double)RATE;
             rng^=rng<<13;rng^=rng>>>17;rng^=rng<<5;
             double noise=((rng&0xffff)/32767.5-1);
+            double env=Math.exp(-t*(kick?18:tom?13:clap?19:rim?60:metallic?5:snare?24:43));
             double sample;
-            if(kick){double freq=51+86*Math.exp(-t*34);phase+=2*Math.PI*freq/RATE;sample=Math.sin(phase)*env*.43;}
-            else if(snare){phase+=2*Math.PI*175/RATE;sample=(noise*.23+Math.sin(phase)*.09)*env;}
-            else{sample=noise*env*(hit.kind().equals("open-hat")?.145:.11);}
-            float v=(float)(sample*level);left[start+i]+=v;right[start+i]+=v;
+            if(kick){
+                phase+=2*Math.PI*(51+86*Math.exp(-t*34))/RATE;
+                sample=Math.sin(phase)*env*.43;
+            }else if(tom){
+                phase+=2*Math.PI*(108+58*Math.exp(-t*27))/RATE;
+                sample=(Math.sin(phase)*.29+noise*.025)*env;
+            }else if(snare||clap||rim){
+                phase+=2*Math.PI*(rim?480:175)/RATE;
+                sample=(noise*(rim?.13:.23)+Math.sin(phase)*(rim?.07:.09))*env;
+                if(clap)sample*=1+.4*Math.sin(2*Math.PI*32*t);
+            }else{
+                sample=noise*env*(metallic?.095:kind.equals("open-hat")?.145:.11);
+                if(metallic)sample+=Math.sin(2*Math.PI*5200*t)*env*.018;
+            }
+            float v=(float)(sample*level);
+            left[start+i]+=v;right[start+i]+=v;
         }
     }
     private static void writeShort(OutputStream o,int v)throws IOException{o.write(v&255);o.write((v>>>8)&255);}

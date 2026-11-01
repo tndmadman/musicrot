@@ -28,9 +28,12 @@ with tempfile.TemporaryDirectory() as d:
         current=json.loads(req('/api/jobs'))['jobs'][0]
         assert current['state']=='RUNNING'
         assert req('/api/cancel?'+q(dict(id=id)),True)=='CANCELLED'
+        assert id not in {j['id'] for j in json.loads(req('/api/jobs'))['jobs']}, 'cancelled running row must disappear immediately'
+        assert 'state=CANCELLED' in (pathlib.Path(d)/'jobs'/(id+'.properties')).read_text(), 'cancel tombstone must persist'
         assert req('/api/heartbeat?'+q(dict(id=id,worker='test-worker',token=token)),True)=='REJECTED'
         assert req('/api/finish?'+q(dict(id=id,worker='test-worker',token=token,filename='faked.mp4',sha='bad')),True)=='STALE_LEASE'
         assert req('/api/cancel?'+q(dict(id=id)),True)=='CANCELLED'
+        assert id not in {j['id'] for j in json.loads(req('/api/jobs'))['jobs']}, 'idempotent cancellation stays hidden'
         assert req('/api/retry?'+q(dict(id=id)),True)=='NOT_FAILED'
         print('PASS queue settings/claim/token/retry/pause/drain/cancellation')
         # A fresh job can still be claimed and completed after cancellation.
@@ -44,6 +47,7 @@ with tempfile.TemporaryDirectory() as d:
                 time.sleep(.6)
             else:raise AssertionError(f'No READY result: {status}')
             assert any(j['state']=='READY' for j in status['jobs'])
+            assert id not in {j['id'] for j in status['jobs']}, 'canceled row reappeared after subsequent completion'
             print('PASS worker rendered actual 720p MP4 / validated READY')
         finally:worker.terminate();worker.wait(timeout=10)
     finally:proc.terminate();proc.wait(timeout=10)

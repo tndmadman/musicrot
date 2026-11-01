@@ -38,6 +38,13 @@ public final class Music {
      * Chord snapshots are derived from exact sounding notes, so the legacy pitch QA
      * still applies while separate harmony events preserve long chords and guitar shapes. */
     public static Composition generate(long seed,int seconds,String mode,String theme){
+        return MusicV4.generate(seed,seconds,mode,theme);
+    }
+    public static Composition generate(long seed,int seconds,String mode,String theme,String style){
+        return MusicV4.generate(seed,seconds,mode,theme,style);
+    }
+    /** Historical generator retained only for diagnostic comparisons, never used for new jobs. */
+    private static Composition generateLegacy(long seed,int seconds,String mode,String theme){
         if(seconds<2||seconds>180)throw new IllegalArgumentException("DURATION_OUT_OF_RANGE");
         if(!Set.of("flow","guitar").contains(mode))throw new IllegalArgumentException("INVALID_MODE");
         Random r=new Random(seed);
@@ -156,24 +163,95 @@ public final class Music {
     private static void addDrum(List<Composition.Drum> drums,String kind,double time,int velocity,int seconds){
         if(time<seconds-1e-7)drums.add(new Composition.Drum(kind,time,velocity));
     }
-    /** MIDI export uses the exact composition tempo map, retaining imported tempo events. */
+    /**
+     * MIDI type 1, independent GM instrument tracks and standard channel 10 drums.
+     * Tracks and playback visuals share the canonical event timings.
+     */
     public static void writeMidi(Composition c,Path path)throws Exception{
-        Sequence seq=new Sequence(Sequence.PPQ,960);Track t=seq.createTrack();
-        for(Composition.Tempo tempo:c.tempoMap){int mpqn=(int)Math.round(60000000/tempo.bpm());MetaMessage m=new MetaMessage();m.setMessage(0x51,new byte[]{(byte)(mpqn>>16),(byte)(mpqn>>8),(byte)mpqn},3);t.add(new MidiEvent(m,(long)Math.round(tempo.beat()*960)));}
-        List<MidiEvent> ev=new ArrayList<>();for(Composition.Note n:c.notes){
-            long tick=Math.round(c.beatAtSeconds(n.start())*960),end=Math.round(c.beatAtSeconds(n.start()+n.duration())*960);
-            if(end<=tick)throw new IllegalArgumentException("MIDI_NOTE_TOO_SHORT");
-            ShortMessage on=new ShortMessage(ShortMessage.NOTE_ON,0,n.pitch(),n.velocity());ShortMessage off=new ShortMessage(ShortMessage.NOTE_OFF,0,n.pitch(),0);
-            ev.add(new MidiEvent(on,tick));ev.add(new MidiEvent(off,end));
+        Sequence seq=new Sequence(Sequence.PPQ,960);Track tempoTrack=seq.createTrack();
+        for(Composition.Tempo tempo:c.tempoMap){
+            int mpqn=(int)Math.round(60000000/tempo.bpm());
+            MetaMessage m=new MetaMessage();m.setMessage(0x51,
+                new byte[]{(byte)(mpqn>>16),(byte)(mpqn>>8),(byte)mpqn},3);
+            tempoTrack.add(new MidiEvent(m,(long)Math.round(tempo.beat()*960)));
         }
-        for(Composition.Drum hit:c.drums){
-            int pitch=switch(hit.kind()){case "kick"->36;case "snare"->38;case "hat"->42;default->46;};
-            long tick=Math.round(c.beatAtSeconds(hit.start())*960);long end=tick+Math.max(1,Math.round(.08*c.bpm/60*960));
-            ev.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON,9,pitch,hit.velocity()),tick));
-            ev.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF,9,pitch,0),end));
+        // Unknown imported voices retain pitches, velocities, durations and tempo map;
+        // channels are for sound-bank orchestration only, never a rewrite of the notes.
+        Map<String,List<Composition.Note>> lanes=new LinkedHashMap<>();
+        for(Composition.Note n:c.notes){
+            String voice=n.voice(),role=voice.startsWith("lead")?"lead":
+                voice.startsWith("bass")?"bass":voice.startsWith("pad")?"pad":
+                voice.startsWith("arp")?"arp":voice.startsWith("guitar")?"guitar":"imported";
+            lanes.computeIfAbsent(role,k->new ArrayList<>()).add(n);
         }
-        ev.sort(Comparator.comparingLong(MidiEvent::getTick).thenComparingInt(e->((ShortMessage)e.getMessage()).getCommand()==ShortMessage.NOTE_OFF?0:1));for(MidiEvent e:ev)t.add(e);
-        Files.createDirectories(path.toAbsolutePath().getParent());MidiSystem.write(seq,1,path.toFile());
+        int[] channels={0,1,2,3,4,5,6,7,8,10,11,12,13,14,15};int index=0;
+        for(var lane:lanes.entrySet()){
+            if(index>=channels.length)throw new IllegalArgumentException("MIDI_TOO_MANY_INSTRUMENTS");
+            int channel=channels[index++];
+            Track track=seq.createTrack();
+            int patch=SongArrangement.hasGeneratedIdentity(c)
+                ?SongArrangement.gmProgram(c,lane.getKey())
+                :gmProgram(lane.getKey(),c.instrumentPreset,c.mode);
+            track.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE,channel,patch,0),0));
+            List<MidiEvent> events=new ArrayList<>();
+            for(Composition.Note n:lane.getValue()){
+                long at=Math.round(c.beatAtSeconds(n.start())*960);
+                long to=Math.round(c.beatAtSeconds(n.start()+n.duration())*960);
+                if(to<=at)throw new IllegalArgumentException("MIDI_NOTE_TOO_SHORT");
+                events.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON,channel,n.pitch(),n.velocity()),at));
+                events.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF,channel,n.pitch(),0),to));
+            }
+            events.sort(Comparator.comparingLong(MidiEvent::getTick).thenComparingInt(e->
+                ((ShortMessage)e.getMessage()).getCommand()==ShortMessage.NOTE_OFF?0:1));
+            for(MidiEvent ev:events)track.add(ev);
+        }
+        if(!c.drums.isEmpty()){
+            Track drums=seq.createTrack();
+            for(Composition.Drum hit:c.drums){
+                // Replay-only for imported or archived compositions. New songs
+                // contain no percussion events, so channel 10 is never created.
+                int pitch=gmDrumPitch(c,hit);
+                long tick=Math.round(c.beatAtSeconds(hit.start())*960);
+                long end=tick+Math.max(1,Math.round(.08*c.bpm/60*960));
+                drums.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON,9,pitch,hit.velocity()),tick));
+                drums.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF,9,pitch,0),end));
+            }
+        }
+        Files.createDirectories(path.toAbsolutePath().getParent());
+        MidiSystem.write(seq,1,path.toFile());
+    }
+    /** Historical MIDI drum mapping. Never generates a drum event. */
+    private static int gmDrumPitch(Composition c,Composition.Drum hit){
+        int kit=SongArrangement.hasGeneratedIdentity(c)?
+            Math.floorMod(SongArrangement.identity(c).drums(),3):0;
+        return switch(hit.kind()){
+            case "kick"->kit==1?35:36;
+            case "snare"->kit==2?40:38;
+            case "hat"->kit==1?44:42;
+            case "open-hat"->46;
+            case "clap"->39;
+            case "rim"->37;
+            case "tom"->kit==1?47:45;
+            case "ride"->kit==2?59:51;
+            case "crash"->kit==2?57:49;
+            default->throw new IllegalArgumentException("UNKNOWN_PERCUSSION "+hit.kind());
+        };
+    }
+    private static int gmProgram(String role,String preset,String mode){
+        return switch(role){
+            case "lead"->switch(preset){
+                case "warm-pad"->89;case "soft-keys"->0;case "nylon-pluck"->24;
+                case "glass"->11;default->4;};
+            case "bass"->preset.equals("layered")?38:preset.equals("nylon-pluck")?32:33;
+            case "guitar"->preset.equals("glass")?25:preset.equals("layered")?27:24;
+            case "pad"->switch(preset){
+                case "warm-pad"->89;case "nylon-pluck"->24;case "glass"->98;
+                case "layered"->48;default->4;};
+            case "arp"->switch(preset){
+                case "warm-pad"->88;case "nylon-pluck"->24;case "glass"->10;
+                case "layered"->81;default->4;};
+            default->mode.equals("guitar")?24:0;
+        };
     }
     private record MidiMsg(long tick,int track,ShortMessage message) {}
     private record NoteOn(long tick,int velocity) {}
