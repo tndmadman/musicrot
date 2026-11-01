@@ -110,8 +110,6 @@ public final class MusicV4 {
         // Preserve exact physical guitar fretting while varying the rhythm section.
         if(guitar)accompaniment(plan,harmony,notes,seconds,r);
         SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes,ensemble);
-        notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
-        List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
         // Freeze programs in the composition; a later catalog change must not
         // silently alter the sounds of a previously produced song.
         Map<String,Integer> programs=new LinkedHashMap<>();
@@ -127,6 +125,9 @@ public final class MusicV4 {
             int patch=guitar&&(role.equals("lead")||role.equals("guitar"))?guitarPatch:ensemble.program(role);
             programs.put(role,patch);
         }
+        InstrumentPerformance.apply(notes,programs,style.id(),planSeed,tempo,seconds);
+        notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
+        List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
         // ensemble-v5 title marker preserves the archived V5 format.
         Composition output=new Composition(seed,"Original "+style.id()+" arrangement "+seed+" ensemble-v5 variation "+variation,mode,theme,
             "ORIGINAL_GENERATED",ROOTS[key],minor?"minor":"major",tempo,seconds,
