@@ -12,6 +12,22 @@ Windows-first, local, original procedural instrumental visualization engine. Not
 
 `Start-ChordFlow.bat` remains an alias to the same one-click launcher. Optional manual utilities: `Build-ChordFlow.bat`, `Start-Controller.bat`, `Start-Worker.bat`. Do **not** close the controller or worker consoles while processing jobs; use Drain first. See [Windows batch launcher instructions](docs/WINDOWS_BATCH_LAUNCHERS.md).
 
+### V6 musical foundation: instrument correctness, playable ranges, and phrase structure
+
+This incremental release fixes several limitations found in the post-merge review:
+
+- **Manual ensembles:** Explicitly selected harmony and arpeggiated instruments now receive audible, canonical MIDI events, even when both are selected together. Older preset-family choices no longer control the backing configuration of a manual lineup.
+- **Frozen instrument assignments:** `Composition.withInstrument()` preserves exact stored GM programs instead of reconstructing a different sounding band from the title/seed.
+- **Genre recommendations:** The Command Center cycles through actual curated same-genre bands. Select a genre before choosing manual instruments; `Auto` no longer pretends that pop is the recommended style for all seeds.
+- **Musical scale:** Choose `Auto`, `Major`, or `Minor`, as well as BPM/key. Guitar visualization mode keeps its existing C-major-compatible fretboard constraints.
+- **Motifs and endings:** Longer songs develop deterministic melodic contour families, reprise related phrases and aim for a tonic conclusion rather than stopping on arbitrary scale notes.
+- **Instrument-specific pitch register:** A selected cello, violin, saxophone, guitar, etc. influences the octave register as well as articulation and volume. These are heuristics, not guarantees of authentic instrumental technique.
+- **SoundFont program availability:** Sampled rendering now reads the SF2 `pdta/phdr` bank-zero GM preset table and explicitly fails if requested saved GM programs are absent. It does not fetch or redistribute sound banks, and cannot evaluate the real-world quality of the samples.
+
+Manual control remains optional. Automatic ensembles and archived composition replay remain supported. No generated drum/clap track, Windows launcher redesign, or queue/deletion modification is introduced.
+
+**Limits:** A compatible SF2 program is not proof of realistic sampled sound. Production audio still renders a combined FluidSynth mix; professional independent stems, per-track EQ, full orchestrated arrangement planning, a human listening benchmark and calibrated musical-quality gating remain future work. CI primarily uses preview audio, so acceptance testing with the actual Windows sound bank is still required.
+
 ### Manual instruments and more deliberate phrase development
 
 The Command Center now supports **Choose individual instruments**. Select the style first, then override lead, bass, harmony and arpeggiated instruments with curated General MIDI programs; guitar mode offers a separate guitar choice. **Use genre recommendations** loads a starting arrangement based on the style. You can disable an optional accompaniment role, but flow mode still requires at least one harmony or arpeggiated instrument. The renderer never silently adds drums or claps.

@@ -88,6 +88,15 @@ public final class SelfTest {
             manualPatches,112,5);
         check(directed.bpm==112&&directed.key.equals("F")&&directed.instrumentPrograms.get("lead")==65,
             "manual-bpm-key-and-instruments-honored");
+        Composition major=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            manualPatches,112,5,"major");
+        Composition minor=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            manualPatches,112,5,"minor");
+        check(major.scaleMode.equals("major")&&minor.scaleMode.equals("minor")&&
+            major.key.equals("F")&&minor.key.equals("F")&&
+            !major.json().equals(minor.json()),"explicit-major-minor-musical-direction");
+        fails(()->MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            manualPatches,112,5,"unknown"),"unsupported-scale-rejected");
         fails(()->MusicV4.generate(1,20,"guitar","noir","rock",0,"auto-ensemble",
             Map.of(),110,7),"guitar-key-constraint-enforced");
         Composition plucked=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
@@ -97,6 +106,64 @@ public final class SelfTest {
         check(windNote.pitch()==guitarNote.pitch()&&
             Math.abs(windNote.duration()-guitarNote.duration())>.01,
             "lead-instrument-affects-performance-articulation");
+        // Standard SF2 phdr records are 38 bytes; the last is the EOP
+        // sentinel. A bank-zero preset must really exist to be selectable.
+        byte[] sf2Headers=new byte[38*3];
+        sf2Headers[38+20]=65; // second program = alto sax
+        Set<Integer> realPrograms=SoundFontPresets.parsePresetHeaders(sf2Headers);
+        check(realPrograms.contains(0)&&realPrograms.contains(65)&&
+            !realPrograms.contains(4),"sf2-bank-zero-preset-availability");
+        boolean invalidPhdr=false;
+        try{SoundFontPresets.parsePresetHeaders(new byte[37]);}
+        catch(java.io.IOException expected){invalidPhdr=true;}
+        check(invalidPhdr,"invalid-soundfont-preset-record-rejected");
+        Composition celloArrangement=MusicV4.generate(55,45,"flow","noir","cinematic",0,
+            "auto-ensemble",Map.of("lead",42,"bass",43,"pad",48,"arp",-1));
+        check(celloArrangement.notes.stream().filter(n->n.voice().startsWith("lead"))
+            .allMatch(n->n.pitch()>=48&&n.pitch()<=76),
+            "cello-lead-stays-in-playable-register");
+        check(celloArrangement.notes.stream().filter(n->n.voice().startsWith("bass"))
+            .allMatch(n->n.pitch()>=36&&n.pitch()<=65),
+            "contrabass-stays-in-chosen-register");
+        Set<String> motifShapes=new HashSet<>();
+        for(long motifSeed=0;motifSeed<40;motifSeed++)
+            motifShapes.add(Arrays.toString(MotifComposer.theme(motifSeed,"pop")));
+        check(motifShapes.size()>=12,"seed-dependent-distinct-melodic-motifs");
+        check(Arrays.equals(MotifComposer.theme(82,"jazz"),
+            MotifComposer.theme(82,"jazz")),"motif-identity-deterministic");
+        Composition ending=MusicV4.generate(1987,60,"flow","noir","pop");
+        Composition.Note lastLead=ending.notes.stream().filter(n->n.voice().startsWith("lead"))
+            .max(Comparator.comparingDouble(Composition.Note::start)).orElseThrow();
+        int tonic=Arrays.asList("C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B")
+            .indexOf(ending.key);
+        check(tonic>=0&&Math.floorMod(lastLead.pitch(),12)==tonic,
+            "extended-song-final-melody-resolves-to-tonic");
+        // A saved composition remains on the same GM programs even if the
+        // legacy texture preference is transformed.
+        Composition rethemed=custom.withInstrument("glass");
+        check(rethemed.instrumentPrograms.equals(custom.instrumentPrograms)&&
+            SongArrangement.gmProgram(rethemed,"lead")==65,
+            "saved-instrument-patches-survive-preset-transforms");
+        // Both hand-selected backing parts must play, regardless of the
+        // original backing mode, duration, or ensemble-family preference.
+        for(String genre:List.of("lofi","ambient","pop","rock","funk","electronic","jazz","cinematic")){
+            for(int duration:List.of(2,30)){
+                Composition both=MusicV4.generate(8123,duration,"flow","noir",genre,0,"glass",
+                    Map.of("lead",0,"bass",32,"pad",4,"arp",24));
+                check(both.notes.stream().anyMatch(n->n.voice().startsWith("pad"))&&
+                    both.notes.stream().anyMatch(n->n.voice().startsWith("arp"))&&
+                    SongArrangement.gmProgram(both,"pad")==4&&
+                    SongArrangement.gmProgram(both,"arp")==24,
+                    "manual-both-parts-audible-"+genre+"-"+duration);
+                // Changing an irrelevant old family preference does not
+                // change the score or timbre of explicitly chosen roles.
+                Composition other=MusicV4.generate(8123,duration,"flow","noir",genre,0,"warm-pad",
+                    Map.of("lead",0,"bass",32,"pad",4,"arp",24));
+                check(both.notes.equals(other.notes)&&
+                    both.instrumentPrograms.equals(other.instrumentPrograms),
+                    "manual-family-preference-independent-"+genre+"-"+duration);
+            }
+        }
         check(custom.instrumentPrograms.get("lead")==65&&custom.instrumentPrograms.get("bass")==32
             &&custom.instrumentPrograms.get("pad")==4&&!custom.instrumentPrograms.containsKey("arp"),
             "manual-instrument-patches-frozen");
@@ -271,6 +338,26 @@ public final class SelfTest {
         Visual newPalette=new Visual(oldTheme,240,426,30);
         check(newPalette.frame(0).length==240*426*3,"legacy-theme-fallback-renders");
         Path tmp=Files.createTempDirectory("chordflow-test-");try{
+            // Minimal RIFF/sfbk/pdta/phdr fixture: verify the full file walker,
+            // not only the in-memory phdr record parser.
+            java.io.ByteArrayOutputStream sf2Fixture=new java.io.ByteArrayOutputStream();
+            sf2Fixture.write("RIFF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            sf2Fixture.write(new byte[]{(byte)138,0,0,0});
+            sf2Fixture.write("sfbkLIST".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            sf2Fixture.write(new byte[]{(byte)126,0,0,0});
+            sf2Fixture.write("pdtaphdr".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            sf2Fixture.write(new byte[]{(byte)114,0,0,0});
+            sf2Fixture.write(sf2Headers);
+            Path testBank=tmp.resolve("instrument-presets.sf2");
+            Files.write(testBank,sf2Fixture.toByteArray());
+            check(SoundFontPresets.programs(testBank).equals(Set.of(0,65)),
+                "soundfont-riff-program-scan");
+            SoundFontPresets.requirePrograms(testBank,List.of(0,65));
+            boolean missingProgram=false;
+            try{SoundFontPresets.requirePrograms(testBank,List.of(4));}
+            catch(java.io.IOException expected){missingProgram=true;}
+            check(missingProgram,"missing-sampled-instrument-fails-closed");
+
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());
             long midiOnsets=0;for(Track track:seq.getTracks())for(int mi=0;mi<track.size();mi++){
                 MidiMessage msg=track.get(mi).getMessage();

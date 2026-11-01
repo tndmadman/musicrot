@@ -42,14 +42,27 @@ public final class InstrumentRegistry {
         }
         return Map.copyOf(result);
     }
-    public static EnsembleCatalog.Ensemble customize(EnsembleCatalog.Ensemble base,Map<String,Integer> overrides){
+    public static EnsembleCatalog.Ensemble customize(EnsembleCatalog.Ensemble base,
+            Map<String,Integer> overrides){
+        return customize(base,overrides,"pop");
+    }
+    /** A manual lineup is an intentional arrangement, not a preset timbre swap. */
+    public static EnsembleCatalog.Ensemble customize(EnsembleCatalog.Ensemble base,
+            Map<String,Integer> overrides,String style){
+        if(overrides.isEmpty())return base;
         for(var entry:overrides.entrySet())validate(entry.getKey(),entry.getValue());
         int pad=overrides.getOrDefault("pad",base.pad());
         int arp=overrides.getOrDefault("arp",base.arp());
         if(pad==-1&&arp==-1)throw new IllegalArgumentException("ACCOMPANIMENT_REQUIRED");
-        return new EnsembleCatalog.Ensemble("Custom "+base.name(),base.family(),
+        // Both chosen parts must play. The arrangement engine handles density,
+        // rather than silently dropping the arpeggio in the "comp" backing mode.
+        String backing=pad>=0&&arp>=0?
+            (style.equals("ambient")||style.equals("cinematic")?"space":"comp"):
+            arp>=0?"pluck":
+            (style.equals("ambient")||style.equals("cinematic")?"sustain":"comp");
+        return new EnsembleCatalog.Ensemble("Custom "+style,base.family(),
             overrides.getOrDefault("lead",base.lead()),overrides.getOrDefault("bass",base.bass()),
-            pad,arp,base.backing());
+            pad,arp,backing);
     }
     public static String catalogJson(){
         StringBuilder b=new StringBuilder("{");int r=0;
@@ -69,10 +82,18 @@ public final class InstrumentRegistry {
         return b.append('}').toString();
     }
     public static String suggestionJson(String style){
-        if(style.equals("auto"))style="pop";
-        EnsembleCatalog.Ensemble e=EnsembleCatalog.choices(style).get(0);
+        return suggestionJson(style,0);
+    }
+    /** Each request proposes an actual same-genre band. Auto has no single
+     * correct proposal, as the generated style varies by seed. */
+    public static String suggestionJson(String style,int variant){
+        if(style.equals("auto"))return "{\"requiresStyle\":true}";
+        if(variant<0||variant>1000)throw new IllegalArgumentException("INVALID_RECOMMENDATION_INDEX");
+        List<EnsembleCatalog.Ensemble> bands=EnsembleCatalog.choices(style);
+        EnsembleCatalog.Ensemble e=bands.get(variant%bands.size());
         return "{\"lead\":"+e.lead()+",\"bass\":"+e.bass()+
             ",\"pad\":"+e.pad()+",\"arp\":"+e.arp()+
-            ",\"guitar\":"+EnsembleCatalog.guitarProgram(style,0)+"}";
+            ",\"guitar\":"+EnsembleCatalog.guitarProgram(style,variant)+
+            ",\"variant\":"+variant+",\"options\":"+bands.size()+"}";
     }
 }

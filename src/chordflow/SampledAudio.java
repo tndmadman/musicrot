@@ -64,6 +64,9 @@ public final class SampledAudio {
     }
     public static Audio.Stats synth(Composition c,Path wav)throws IOException{
         Path sf=soundbank();
+        // A selected GM patch must be present in the configured SF2.
+        // Otherwise FluidSynth may silently substitute an unintended sound.
+        SoundFontPresets.requirePrograms(sf,c.instrumentPrograms.values());
         String executable=fluidsynthExecutable();
 
         Path work=Files.createTempDirectory("chordflow-sf2-");
