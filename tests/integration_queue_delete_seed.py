@@ -157,7 +157,10 @@ with tempfile.TemporaryDirectory(prefix='cf-delete-seed-') as tmp:
         old_cancelled = work / 'jobs' / 'old-cancelled-fixture.properties'
         old_cancelled.write_text('state=CANCELLED\nseed=43\nmode=flow\nattempts=0\n')
         assert 'old-cancelled-fixture' not in jobs(), 'historical canceled jobs must stay hidden'
-        print('PASS historical CANCELLED and DELETED jobs are hidden from the API immediately')
+        old_dismissed = work / 'jobs' / 'old-dismissed-fixture.properties'
+        old_dismissed.write_text('state=DISMISSED\\nseed=44\\nmode=flow\\nattempts=1\\n')
+        assert 'old-dismissed-fixture' not in jobs(), 'historical dismissed failures must stay hidden'
+        print('PASS historical CANCELLED, DELETED and DISMISSED jobs are hidden from the API immediately')
 
     finally:
         if worker is not None:
