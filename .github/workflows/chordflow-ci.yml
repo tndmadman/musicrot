@@ -34,6 +34,8 @@ jobs:
       - run: python3 tests/integration_queue_delete_seed.py
       - run: python3 tests/integration_queue_v2.py
       - run: python3 tests/integration_music_fingerprint.py
+      - name: Direct CLI V5 ensemble selection smoke
+        run: java -Djava.awt.headless=true -cp build chordflow.Main render --seed 78 --seconds 2 --mode flow --style cinematic --instrument glass --width 240 --height 426 --encoder x264 --out output
       - run: java -Djava.awt.headless=true -cp build chordflow.Main render --seed 44 --seconds 2 --mode guitar --width 240 --height 426 --encoder x264 --out output
       - name: Validate MP4 codec
         run: |
@@ -93,6 +95,10 @@ jobs:
       - run: python tests/integration_music_fingerprint.py
       - name: One-click Windows command center plus worker end-to-end smoke
         run: ./tests/windows_one_click_smoke.ps1
+      - name: Direct CLI V5 ensemble selection smoke
+        run: |
+          java '-Djava.awt.headless=true' -cp build chordflow.Main render --seed 78 --seconds 2 --mode flow --style cinematic --instrument glass --width 240 --height 426 --encoder x264 --out output
+          if ($LASTEXITCODE -ne 0) { throw 'V5 direct CLI instrument render failed' }
       - name: Render Windows 2s smoke
         run: |
           java '-Djava.awt.headless=true' -cp build chordflow.Main render --seed 45 --seconds 2 --mode flow --width 240 --height 426 --encoder x264 --out output
