@@ -131,11 +131,16 @@ public final class MusicV4 {
         // Lengths and progression shifts change at structural boundaries.
         while(at<p.totalBeats()-1e-8){
             int len=pattern[(index+p.motifStart())%pattern.length];
-            double duration=Math.min(len,p.totalBeats()-at);
-            int degree=p.progression()[(index+(index/6)%3)%p.progression().length];
+            double remaining=p.totalBeats()-at;
+            double duration=Math.min(len,remaining);
+            // Reserve a complete final tonic where possible. Avoid abruptly
+            // cutting an unrelated progression off halfway through its cycle.
+            if(remaining>5.0&&remaining-duration<4.0)duration=remaining-4.0;
+            boolean closingChord=remaining-duration<1e-6;
+            int degree=closingChord?0:p.progression()[(index+(index/6)%3)%p.progression().length];
             int[] pitches,frets=null;String symbol;
             if(p.guitar()){
-                int chord=p.progression()[(index+(index/6)%2)%p.progression().length];
+                int chord=closingChord?0:p.progression()[(index+(index/6)%2)%p.progression().length];
                 frets=GUITAR[chord].clone();symbol=GUITAR_NAMES[chord];
                 int count=0;for(int f:frets)if(f>=0)count++;
                 pitches=new int[count];for(int i=0,j=0;i<6;i++)if(frets[i]>=0)pitches[j++]=TUNING[i]+frets[i];
@@ -189,30 +194,37 @@ public final class MusicV4 {
         Random motifRng=new Random(p.seed()^0x165667B19E3779F9L);
         int[] motif=new int[6];
         for(int m=1;m<motif.length;m++)
-            motif[m]=Math.max(-3,Math.min(3,motif[m-1]+motifRng.nextInt(3)-1));
+            motif[m]=Math.max(-3,Math.min(3,motif[m-1]+motifRng.nextInt(5)-2));
         int phrase=0;
         // Each two-bar statement gets a distinct rhythm and motif treatment. Return
         // themes reappear as a developed hook, never as an indefinite copied loop.
         for(double start=0;start<p.totalBeats()-1e-7;start+=8,phrase++){
+            int phraseKind=phrase%4,cycle=phrase/4;
             Random r=new Random(p.seed()^0x2545F4914F6CDD1DL^(phrase*0x9E3779B97F4A7C15L));
-            boolean response=phrase%4==1,returnHook=phrase%4==2;
-            int contour=(p.motifStart()+phrase/2+phrase%3)%5;
-            int anchor=Math.floorMod(p.motifStart()+phrase*3+r.nextInt(3),7);
+            // The third phrase intentionally reprises the first phrase's
+            // rhythmic motif, even though it must adapt to new harmony.
+            Random phraseRhythm=new Random(p.seed()^0x735A2D97BC3A27E9L^
+                ((long)cycle*0xD1342543DE82EF95L)^
+                ((long)(phraseKind==2?0:phraseKind)*0x9E3779B97F4A7C15L));
+            boolean response=phraseKind==1,returnHook=phraseKind==2;
+            int contour=(p.motifStart()+cycle+(response?2:phraseKind==3?3:0))%5;
+            int anchor=Math.floorMod(p.motifStart()+cycle*3+
+                new Random(p.seed()^((long)cycle*0x94D049BB133111EBL)).nextInt(3),7);
             double position=0;int event=0;
             while(position<8-1e-6&&start+position<p.totalBeats()-.05){
                 // Stable rhythm language belongs to the song identity: lyrical,
                 // offbeat, rolling, deliberate or call-and-response.
                 double length=switch(identity.melody()){
-                    case 0->new double[]{.5,.75,1,1.25,1.5,2}[r.nextInt(6)];
-                    case 1->new double[]{1,1.5,2,2,2.5,3}[r.nextInt(6)];
-                    case 2->new double[]{.5,.5,.75,1,1.25,1.5}[r.nextInt(6)];
-                    case 3->new double[]{.75,1,1,1.5,2,2.25}[r.nextInt(6)];
+                    case 0->new double[]{.5,.75,1,1.25,1.5,2}[phraseRhythm.nextInt(6)];
+                    case 1->new double[]{1,1.5,2,2,2.5,3}[phraseRhythm.nextInt(6)];
+                    case 2->new double[]{.5,.5,.75,1,1.25,1.5}[phraseRhythm.nextInt(6)];
+                    case 3->new double[]{.75,1,1,1.5,2,2.25}[phraseRhythm.nextInt(6)];
                     default->new double[]{.5,.75,1.5,2,2.5,1}[event%6];
                 };
                 if(p.style().id().equals("ambient"))length=Math.max(.9,length*1.2);
                 length=Math.min(length,8-position);
-                boolean rest=(r.nextDouble()>(p.style().density()+.10))||
-                    event>0&&r.nextDouble()<(identity.melody()==1?.18:.07);
+                boolean rest=(phraseRhythm.nextDouble()>(p.style().density()+.10))||
+                    event>0&&phraseRhythm.nextDouble()<(identity.melody()==1?.18:.07);
                 double swing=Math.min(.10,p.style().swing())*((event%2==1)?1:0);
                 double onset=start+position+swing;
                 if(!rest&&onset<p.totalBeats()-.05){
@@ -225,10 +237,11 @@ public final class MusicV4 {
                         default->(int)Math.round(x*2);
                     };
                     int motifShift=motif[(event+(response?2:0))%motif.length];
+                    if(response)motifShift=-motifShift;
                     // Reprise the motif every fourth phrase; answer phrases
                     // move in a contrasting direction over the new harmony.
                     int degree=Math.floorMod(anchor+shape+(response?-1:0)
-                        +(returnHook?0:motifShift)+(phrase%4==3?-1:0),7);
+                        +motifShift+(phraseKind==3?-1:0),7);
                     int target=scaleNote(p,degree,0);
                     if(target<64)target+=12;if(target>83)target-=12;
                     // Keep steps singable; let big leaps land on chord tones.
