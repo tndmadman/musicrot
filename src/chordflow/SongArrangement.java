@@ -210,6 +210,8 @@ public final class SongArrangement {
      * compositions without the V5 marker retain the original mapping.
      */
     public static int gmProgram(Composition c,String role){
+        Integer frozen=c.instrumentPrograms.get(role);
+        if(frozen!=null)return frozen;
         if(c.title.contains(" ensemble-v5 ")){
             String[] words=c.title.split(" ");
             String style=words.length>1?words[1]:"pop";
