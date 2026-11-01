@@ -81,6 +81,22 @@ public final class SelfTest {
         for(int i=0;i<20;i++)musicalSignatures.add(MusicFingerprint.of(
             MusicV4.generate(i+100,25,"flow","noir","pop")).melody());
         check(musicalSignatures.size()>=18,"same-style-twenty-song-melodic-diversity");
+        // Manual selection is an actual MIDI patch override, not only a UI label.
+        Map<String,Integer> selected=InstrumentRegistry.parse("lead:65,bass:32,pad:4,arp:-1");
+        Composition custom=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",selected);
+        check(custom.instrumentPrograms.get("lead")==65&&custom.instrumentPrograms.get("bass")==32
+            &&custom.instrumentPrograms.get("pad")==4&&!custom.instrumentPrograms.containsKey("arp"),
+            "manual-instrument-patches-frozen");
+        check(custom.drums.isEmpty()&&custom.notes.stream().noneMatch(n->n.voice().startsWith("arp")),
+            "manual-ensemble-no-hidden-percussion-or-arp");
+        check(SongArrangement.gmProgram(custom,"lead")==65&&SongArrangement.gmProgram(custom,"bass")==32,
+            "manual-program-mapping-used-by-midi");
+        check(custom.json().equals(MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",selected).json()),
+            "manual-instrument-selection-deterministic");
+        fails(()->InstrumentRegistry.parse("lead:127"),"invalid-manual-patch-rejected");
+        fails(()->InstrumentRegistry.parse("lead:65,lead:65"),"duplicate-role-rejected");
+        fails(()->MusicV4.generate(1,20,"flow","noir","pop",0,"auto-ensemble",
+            Map.of("pad",-1,"arp",-1)),"reject-accompaniment-free-ensemble");
         // Curated ensembles are selected as one band, never independent
         // lead/bass/pad/arp random choices. Verify every preset and all styles.
         check(Composition.PRESETS.contains("auto-ensemble"),"style-matched-ensemble-default-allowed");
@@ -263,6 +279,10 @@ public final class SelfTest {
             try{CompositionIO.read(malformed);}catch(java.io.IOException expected){malformedRejected=true;}
             check(malformedRejected,"duplicate-null-key-rejected");
             Composition escaped=new Composition(a.seed,"Title \"quoted\"",a.mode,a.theme,"Creator \n rights",a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,a.tempoMap,a.instrumentPreset);
+            custom.save(tmp.resolve("manual.json"));
+            Composition restored=CompositionIO.read(tmp.resolve("manual.json"));
+            check(restored.instrumentPrograms.equals(custom.instrumentPrograms)&&
+                restored.json().equals(custom.json()),"custom-patches-persist-across-json-roundtrip");
             escaped.save(tmp.resolve("escaped.json"));
             check(escaped.json().equals(CompositionIO.read(tmp.resolve("escaped.json")).json()),"json-escape-roundtrip");
             Audio.Stats stats=Audio.synth(a,wav);check(stats.rms()>.007&&stats.peak()<.98,"nonsilent-true-synthesis");check(Files.size(wav)>1_000_000,"wav-real-pcm");
