@@ -330,6 +330,26 @@ public final class SelfTest {
         Visual newPalette=new Visual(oldTheme,240,426,30);
         check(newPalette.frame(0).length==240*426*3,"legacy-theme-fallback-renders");
         Path tmp=Files.createTempDirectory("chordflow-test-");try{
+            // Minimal RIFF/sfbk/pdta/phdr fixture: verify the full file walker,
+            // not only the in-memory phdr record parser.
+            java.io.ByteArrayOutputStream sf2Fixture=new java.io.ByteArrayOutputStream();
+            sf2Fixture.write("RIFF".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            sf2Fixture.write(new byte[]{(byte)138,0,0,0});
+            sf2Fixture.write("sfbkLIST".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            sf2Fixture.write(new byte[]{(byte)126,0,0,0});
+            sf2Fixture.write("pdtaphdr".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            sf2Fixture.write(new byte[]{(byte)114,0,0,0});
+            sf2Fixture.write(sf2Headers);
+            Path testBank=tmp.resolve("instrument-presets.sf2");
+            Files.write(testBank,sf2Fixture.toByteArray());
+            check(SoundFontPresets.programs(testBank).equals(Set.of(0,65)),
+                "soundfont-riff-program-scan");
+            SoundFontPresets.requirePrograms(testBank,List.of(0,65));
+            boolean missingProgram=false;
+            try{SoundFontPresets.requirePrograms(testBank,List.of(4));}
+            catch(java.io.IOException expected){missingProgram=true;}
+            check(missingProgram,"missing-sampled-instrument-fails-closed");
+
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());
             long midiOnsets=0;for(Track track:seq.getTracks())for(int mi=0;mi<track.size();mi++){
                 MidiMessage msg=track.get(mi).getMessage();
