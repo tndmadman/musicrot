@@ -143,6 +143,7 @@ public final class MusicV4 {
             int patch=guitar&&(role.equals("lead")||role.equals("guitar"))?guitarPatch:ensemble.program(role);
             programs.put(role,patch);
         }
+        MotifComposer.resolve(notes,key,tempo,seconds);
         InstrumentPerformance.apply(notes,programs,style.id(),planSeed,tempo,seconds);
         notes.sort(Comparator.comparingDouble(Composition.Note::start).thenComparing(Composition.Note::voice));
         List<Composition.Chord> snapshots=snapshots(notes,harmony,seconds);
@@ -221,10 +222,7 @@ public final class MusicV4 {
         int last=65+p.key();
         // A song owns a small interval theme. Each phrase develops the same
         // melodic vocabulary, instead of rolling completely unrelated notes.
-        Random motifRng=new Random(p.seed()^0x165667B19E3779F9L);
-        int[] motif=new int[6];
-        for(int m=1;m<motif.length;m++)
-            motif[m]=Math.max(-3,Math.min(3,motif[m-1]+motifRng.nextInt(5)-2));
+        int[] motif=MotifComposer.theme(p.seed(),p.style().id());
         int phrase=0;
         // Each two-bar statement gets a distinct rhythm and motif treatment. Return
         // themes reappear as a developed hook, never as an indefinite copied loop.
