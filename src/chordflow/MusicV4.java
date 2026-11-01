@@ -67,6 +67,16 @@ public final class MusicV4 {
     }
     public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,
                                        int variation,String instrumentPreference,Map<String,Integer> overrides){
+        return generate(seed,seconds,mode,theme,requestedStyle,variation,instrumentPreference,overrides,0,-1);
+    }
+    /** bpm=0 and key=-1 choose genre-appropriate automatic defaults. */
+    public static Composition generate(long seed,int seconds,String mode,String theme,String requestedStyle,
+                                       int variation,String instrumentPreference,Map<String,Integer> overrides,
+                                       int requestedBpm,int requestedKey){
+        if(requestedBpm!=0&&(requestedBpm<35||requestedBpm>220))
+            throw new IllegalArgumentException("MANUAL_BPM_OUT_OF_RANGE");
+        if(requestedKey<-1||requestedKey>11||(mode.equals("guitar")&&requestedKey>0))
+            throw new IllegalArgumentException("MANUAL_KEY_INCOMPATIBLE_WITH_GUITAR_SHAPES");
         if(overrides==null)throw new IllegalArgumentException("INSTRUMENT_SELECTION_MISSING");
         if(variation<0||variation>12)throw new IllegalArgumentException("INVALID_COMPOSITION_VARIATION");
         if(!Composition.PRESETS.contains(instrumentPreference))
@@ -81,7 +91,8 @@ public final class MusicV4 {
         if(style==null)throw new IllegalArgumentException("INVALID_MUSIC_STYLE");
         boolean guitar=mode.equals("guitar"),minor=!guitar&&r.nextBoolean();
         // The guitar library is deliberately C-major/Am-compatible. Never apply an unrelated key.
-        int key=guitar?0:r.nextInt(12),tempo=style.bpmMin()+r.nextInt(style.bpmMax()-style.bpmMin()+1);
+        int key=requestedKey>=0?requestedKey:guitar?0:r.nextInt(12);
+        int tempo=requestedBpm>0?requestedBpm:style.bpmMin()+r.nextInt(style.bpmMax()-style.bpmMin()+1);
         int[] progressions=guitar?GUITAR_PROGRESSIONS[r.nextInt(GUITAR_PROGRESSIONS.length)]:
             (minor?MINOR_PROGRESSIONS:MAJOR_PROGRESSIONS)[r.nextInt(minor?MINOR_PROGRESSIONS.length:MAJOR_PROGRESSIONS.length)];
         double beat=60.0/tempo,totalBeats=seconds/beat;
