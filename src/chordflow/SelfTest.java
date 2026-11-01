@@ -88,6 +88,15 @@ public final class SelfTest {
             manualPatches,112,5);
         check(directed.bpm==112&&directed.key.equals("F")&&directed.instrumentPrograms.get("lead")==65,
             "manual-bpm-key-and-instruments-honored");
+        Composition major=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            manualPatches,112,5,"major");
+        Composition minor=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            manualPatches,112,5,"minor");
+        check(major.scaleMode.equals("major")&&minor.scaleMode.equals("minor")&&
+            major.key.equals("F")&&minor.key.equals("F")&&
+            !major.json().equals(minor.json()),"explicit-major-minor-musical-direction");
+        fails(()->MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            manualPatches,112,5,"unknown"),"unsupported-scale-rejected");
         fails(()->MusicV4.generate(1,20,"guitar","noir","rock",0,"auto-ensemble",
             Map.of(),110,7),"guitar-key-constraint-enforced");
         Composition plucked=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
