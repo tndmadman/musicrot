@@ -97,6 +97,17 @@ public final class SelfTest {
         check(windNote.pitch()==guitarNote.pitch()&&
             Math.abs(windNote.duration()-guitarNote.duration())>.01,
             "lead-instrument-affects-performance-articulation");
+        // Standard SF2 phdr records are 38 bytes; the last is the EOP
+        // sentinel. A bank-zero preset must really exist to be selectable.
+        byte[] sf2Headers=new byte[38*3];
+        sf2Headers[38+20]=65; // second program = alto sax
+        Set<Integer> realPrograms=SoundFontPresets.parsePresetHeaders(sf2Headers);
+        check(realPrograms.contains(0)&&realPrograms.contains(65)&&
+            !realPrograms.contains(4),"sf2-bank-zero-preset-availability");
+        boolean invalidPhdr=false;
+        try{SoundFontPresets.parsePresetHeaders(new byte[37]);}
+        catch(java.io.IOException expected){invalidPhdr=true;}
+        check(invalidPhdr,"invalid-soundfont-preset-record-rejected");
         // A saved composition remains on the same GM programs even if the
         // legacy texture preference is transformed.
         Composition rethemed=custom.withInstrument("glass");
