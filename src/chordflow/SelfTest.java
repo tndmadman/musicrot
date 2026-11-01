@@ -84,6 +84,12 @@ public final class SelfTest {
         // Manual selection is an actual MIDI patch override, not only a UI label.
         Map<String,Integer> manualPatches=InstrumentRegistry.parse("lead:65,bass:32,pad:4,arp:-1");
         Composition custom=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",manualPatches);
+        Composition directed=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",
+            manualPatches,112,5);
+        check(directed.bpm==112&&directed.key.equals("F")&&directed.instrumentPrograms.get("lead")==65,
+            "manual-bpm-key-and-instruments-honored");
+        fails(()->MusicV4.generate(1,20,"guitar","noir","rock",0,"auto-ensemble",
+            Map.of(),110,7),"guitar-key-constraint-enforced");
         check(custom.instrumentPrograms.get("lead")==65&&custom.instrumentPrograms.get("bass")==32
             &&custom.instrumentPrograms.get("pad")==4&&!custom.instrumentPrograms.containsKey("arp"),
             "manual-instrument-patches-frozen");
@@ -279,6 +285,17 @@ public final class SelfTest {
             try{CompositionIO.read(malformed);}catch(java.io.IOException expected){malformedRejected=true;}
             check(malformedRejected,"duplicate-null-key-rejected");
             Composition escaped=new Composition(a.seed,"Title \"quoted\"",a.mode,a.theme,"Creator \n rights",a.key,a.scaleMode,a.bpm,a.duration,a.chords,a.notes,a.tempoMap,a.instrumentPreset);
+            Path manualMidi=tmp.resolve("manual.mid");
+            Music.writeMidi(custom,manualMidi);
+            Sequence manualSequence=MidiSystem.getSequence(manualMidi.toFile());
+            Set<Integer> patches=new HashSet<>();
+            for(Track track:manualSequence.getTracks())
+                for(int mi=0;mi<track.size();mi++)
+                    if(track.get(mi).getMessage() instanceof ShortMessage msg&&
+                       msg.getCommand()==ShortMessage.PROGRAM_CHANGE)
+                        patches.add(msg.getData1());
+            check(patches.contains(65)&&patches.contains(32)&&patches.contains(4),
+                "manual-patches-present-in-actual-midi");
             custom.save(tmp.resolve("manual.json"));
             Composition restored=CompositionIO.read(tmp.resolve("manual.json"));
             check(restored.instrumentPrograms.equals(custom.instrumentPrograms)&&
