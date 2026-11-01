@@ -97,6 +97,32 @@ public final class SelfTest {
         check(windNote.pitch()==guitarNote.pitch()&&
             Math.abs(windNote.duration()-guitarNote.duration())>.01,
             "lead-instrument-affects-performance-articulation");
+        // A saved composition remains on the same GM programs even if the
+        // legacy texture preference is transformed.
+        Composition rethemed=custom.withInstrument("glass");
+        check(rethemed.instrumentPrograms.equals(custom.instrumentPrograms)&&
+            SongArrangement.gmProgram(rethemed,"lead")==65,
+            "saved-instrument-patches-survive-preset-transforms");
+        // Both hand-selected backing parts must play, regardless of the
+        // original backing mode, duration, or ensemble-family preference.
+        for(String genre:List.of("lofi","ambient","pop","rock","funk","electronic","jazz","cinematic")){
+            for(int duration:List.of(2,30)){
+                Composition both=MusicV4.generate(8123,duration,"flow","noir",genre,0,"glass",
+                    Map.of("lead",0,"bass",32,"pad",4,"arp",24));
+                check(both.notes.stream().anyMatch(n->n.voice().startsWith("pad"))&&
+                    both.notes.stream().anyMatch(n->n.voice().startsWith("arp"))&&
+                    SongArrangement.gmProgram(both,"pad")==4&&
+                    SongArrangement.gmProgram(both,"arp")==24,
+                    "manual-both-parts-audible-"+genre+"-"+duration);
+                // Changing an irrelevant old family preference does not
+                // change the score or timbre of explicitly chosen roles.
+                Composition other=MusicV4.generate(8123,duration,"flow","noir",genre,0,"warm-pad",
+                    Map.of("lead",0,"bass",32,"pad",4,"arp",24));
+                check(both.notes.equals(other.notes)&&
+                    both.instrumentPrograms.equals(other.instrumentPrograms),
+                    "manual-family-preference-independent-"+genre+"-"+duration);
+            }
+        }
         check(custom.instrumentPrograms.get("lead")==65&&custom.instrumentPrograms.get("bass")==32
             &&custom.instrumentPrograms.get("pad")==4&&!custom.instrumentPrograms.containsKey("arp"),
             "manual-instrument-patches-frozen");
