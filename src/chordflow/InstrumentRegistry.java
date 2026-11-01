@@ -82,10 +82,18 @@ public final class InstrumentRegistry {
         return b.append('}').toString();
     }
     public static String suggestionJson(String style){
-        if(style.equals("auto"))style="pop";
-        EnsembleCatalog.Ensemble e=EnsembleCatalog.choices(style).get(0);
+        return suggestionJson(style,0);
+    }
+    /** Each request proposes an actual same-genre band. Auto has no single
+     * correct proposal, as the generated style varies by seed. */
+    public static String suggestionJson(String style,int variant){
+        if(style.equals("auto"))return "{\"requiresStyle\":true}";
+        if(variant<0||variant>1000)throw new IllegalArgumentException("INVALID_RECOMMENDATION_INDEX");
+        List<EnsembleCatalog.Ensemble> bands=EnsembleCatalog.choices(style);
+        EnsembleCatalog.Ensemble e=bands.get(variant%bands.size());
         return "{\"lead\":"+e.lead()+",\"bass\":"+e.bass()+
             ",\"pad\":"+e.pad()+",\"arp\":"+e.arp()+
-            ",\"guitar\":"+EnsembleCatalog.guitarProgram(style,0)+"}";
+            ",\"guitar\":"+EnsembleCatalog.guitarProgram(style,variant)+
+            ",\"variant\":"+variant+",\"options\":"+bands.size()+"}";
     }
 }
