@@ -48,9 +48,17 @@ public final class CompositionIO {
                     drums.add(new Composition.Drum(string(d,"kind"),number(d,"startSeconds"),integer(d,"velocity")));
                 }
             }
+            Map<String,Integer> programs=new LinkedHashMap<>();
+            if(root.containsKey("instrumentPrograms")){
+                for(var entry:obj(root.get("instrumentPrograms")).entrySet()){
+                    int patch=intValue(entry.getValue());
+                    InstrumentRegistry.validate(entry.getKey(),patch);
+                    programs.put(entry.getKey(),patch);
+                }
+            }
             return new Composition(longValue(root,"seed"),string(root,"title"),string(root,"mode"),string(root,"theme"),
                     string(root,"rights"),string(root,"key"),string(root,"scaleMode"),number(root,"bpm"),
-                    number(root,"durationSeconds"),chords,notes,tempos,string(root,"instrumentPreset"),harmony,drums,schema==3);
+                    number(root,"durationSeconds"),chords,notes,tempos,string(root,"instrumentPreset"),harmony,drums,schema==3,programs);
         } catch(IllegalArgumentException e){throw new IOException("INVALID_COMPOSITION_JSON: "+e.getMessage(),e);}
     }
     private static Map<String,Object> obj(Object v){if(!(v instanceof Map<?,?> m))throw new IllegalArgumentException("EXPECTED_OBJECT");
