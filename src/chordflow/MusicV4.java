@@ -101,8 +101,11 @@ public final class MusicV4 {
         double beat=60.0/tempo,totalBeats=seconds/beat;
         Plan plan=new Plan(planSeed,style,key,minor,tempo,beat,totalBeats,progressions,minor?MINOR:MAJOR,guitar,r.nextInt(7));
         // The band is chosen as a unit, not as independent random MIDI patches.
+        // Manual role selections are independent of the older texture-family
+        // dropdown, which is only meaningful in automatic ensemble mode.
+        String ensemblePreference=overrides.isEmpty()?instrumentPreference:"auto-ensemble";
         EnsembleCatalog.Ensemble ensemble=InstrumentRegistry.customize(
-            EnsembleCatalog.select(planSeed,style.id(),instrumentPreference),overrides);
+            EnsembleCatalog.select(planSeed,style.id(),ensemblePreference),overrides,style.id());
         if(guitar&&overrides.containsKey("lead"))
             InstrumentRegistry.validate("guitar",overrides.get("lead"));
         List<Composition.Harmony> harmony=harmonize(plan,r,seconds);
