@@ -16,6 +16,8 @@ Windows-first, local, original procedural instrumental visualization engine. Not
 
 The Command Center now supports **Choose individual instruments**. Select the style first, then override lead, bass, harmony and arpeggiated instruments with curated General MIDI programs; guitar mode offers a separate guitar choice. **Use genre recommendations** loads a starting arrangement based on the style. You can disable an optional accompaniment role, but flow mode still requires at least one harmony or arpeggiated instrument. The renderer never silently adds drums or claps.
 
+Set **BPM** and **Musical key** in the dashboard for explicit tempo and pitch-class control, or leave both on Auto for seeded genre recommendations. Guitar mode restricts key selection to its supported C-major-compatible chord shapes. The same settings are available in the CLI as `--bpm 112 --key 5` (F); use BPM `0` and key `-1` for automatic choices.
+
 Manual choices are saved with the queued job and delivered to the worker, rather than being decorative dashboard preferences. Newly generated composition JSON freezes the exact GM instrument program for each audible musical role under `instrumentPrograms`. Saved compositions therefore keep the same assigned programs even after the curated ensemble catalog is updated. Historical composition JSON without this field retains the original replay logic. These controls select **GM programs**, not guaranteed particular samples: the operator's configured SoundFont determines the timbre and quality.
 
 CLI example (use a quoted comma-separated value):
@@ -24,7 +26,7 @@ CLI example (use a quoted comma-separated value):
 java -cp build chordflow.Main compose --style jazz --seed 8080 --seconds 40 --instrument auto-ensemble --instruments "lead:65,bass:32,pad:4,arp:-1" --out my-song.json
 ```
 
-The melody generator now intentionally reprises rhythmic motifs in later phrases and reserves a tonic closing chord where the duration permits. Quality diagnostics measure *real instrument note onsets* instead of relying on an absent drum track. These are incremental composition improvements, not a claim of professional-level music or a replacement for listening tests.
+The melody generator now intentionally reprises rhythmic motifs in later phrases and reserves a tonic closing chord where the duration permits. Selected instrument types also influence canonical note articulation and dynamics, so changing from guitar to saxophone affects performance rather than merely the GM patch. Quality diagnostics measure *real instrument note onsets* instead of relying on an absent drum track. These are incremental composition improvements, not a claim of professional-level music or a replacement for listening tests.
 
 ### Batch seeds and deleting generated videos
 
