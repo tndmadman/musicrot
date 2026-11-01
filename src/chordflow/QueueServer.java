@@ -28,6 +28,11 @@ public final class QueueServer {
         if(requestedBpm!=0&&(requestedBpm<35||requestedBpm>220)||requestedKey<-1||requestedKey>11||
            mode.equals("guitar")&&requestedKey>0)throw new IllegalArgumentException("INVALID_MUSIC_TIMING_OR_KEY");
         Map<String,Integer> exact=InstrumentRegistry.parse(instrumentOverrides);
+        if(mode.equals("guitar")&&(exact.containsKey("pad")||exact.containsKey("arp"))||
+           mode.equals("flow")&&exact.containsKey("guitar"))
+            throw new IllegalArgumentException("INSTRUMENT_ROLE_INCOMPATIBLE_WITH_MODE");
+        if(mode.equals("flow")&&exact.getOrDefault("pad",0)==-1&&exact.getOrDefault("arp",0)==-1)
+            throw new IllegalArgumentException("ACCOMPANIMENT_REQUIRED");
         if(mode.equals("guitar")&&exact.containsKey("lead"))InstrumentRegistry.validate("guitar",exact.get("lead"));
         if(!randomSeeds){try{Math.addExact(seed,count-1);}catch(ArithmeticException ex){throw new IllegalArgumentException("SEED_RANGE_OVERFLOW",ex);}}
         Set<Long> usedSeeds=new HashSet<>();
