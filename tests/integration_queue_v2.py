@@ -1,4 +1,4 @@
-import pathlib,subprocess,tempfile,urllib.request,urllib.parse,time,json
+import pathlib,subprocess,tempfile,urllib.request,urllib.parse,urllib.error,time,json
 root=pathlib.Path(__file__).resolve().parents[1]
 def req(path,post=False):
     q=urllib.request.Request('http://127.0.0.1:18991'+path,data=b'' if post else None,method='POST' if post else 'GET')
@@ -36,6 +36,25 @@ with tempfile.TemporaryDirectory() as d:
         assert id not in {j['id'] for j in json.loads(req('/api/jobs'))['jobs']}, 'idempotent cancellation stays hidden'
         assert req('/api/retry?'+q(dict(id=id)),True)=='NOT_FAILED'
         print('PASS queue settings/claim/token/retry/pause/drain/cancellation')
+        # A failed attempt can be deleted from the UI without affecting other jobs.
+        assert req('/api/enqueue?count=1&seed=804&seconds=2&mode=flow&theme=gold&width=720&height=1280&encoder=x264&instrument=soft-keys',True)
+        failed_claim=req('/api/claim?worker=test-worker',True).split('|')
+        assert len(failed_claim)==10,failed_claim
+        failed_id,failed_token=failed_claim[0],failed_claim[7]
+        assert req('/api/finish?'+q(dict(id=failed_id,worker='test-worker',token=failed_token,error='deliberate failure')),True)=='FAILED'
+        assert failed_id in {j['id'] for j in json.loads(req('/api/jobs'))['jobs']}
+        assert req('/api/delete-failed?'+q(dict(id=id)),True)=='NOT_FAILED', 'cancelled job must not be changed'
+        assert req('/api/delete-failed?'+q(dict(id=failed_id)),True)=='DISMISSED'
+        assert failed_id not in {j['id'] for j in json.loads(req('/api/jobs'))['jobs']}
+        assert 'state=DISMISSED' in (pathlib.Path(d)/'jobs'/(failed_id+'.properties')).read_text()
+        assert req('/api/delete-failed?'+q(dict(id=failed_id)),True)=='DISMISSED', 'dismissal must be idempotent'
+        assert req('/api/retry?'+q(dict(id=failed_id)),True)=='NOT_FAILED'
+        try:
+            req('/api/delete-failed?'+q(dict(id=failed_id)))
+            raise AssertionError('GET unexpectedly dismissed an entry')
+        except urllib.error.HTTPError as e:
+            assert e.code==400
+        print('PASS failed entries can be deleted, hidden and cannot be retried; nonfailed jobs are safe')
         # A fresh job can still be claimed and completed after cancellation.
         assert req('/api/enqueue?count=1&seed=803&seconds=2&mode=flow&theme=gold&width=720&height=1280&encoder=x264&instrument=soft-keys',True)
         worker=subprocess.Popen(['java','-Djava.awt.headless=true','-cp',str(root/'build'),'chordflow.Main','worker','--url','http://127.0.0.1:18991','--id','worker-2','--out',str(pathlib.Path(d)/'output')],cwd=root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
