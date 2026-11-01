@@ -86,6 +86,13 @@ public final class Visual {
         }
         if(c.mode.equals("guitar"))drawGuitar(current,scale);
         g.setColor(muted);g.setFont(new Font("SansSerif",Font.PLAIN,Math.max(9,(int)(12*scale))));
+        if(!c.instrumentPrograms.isEmpty()){
+            Integer lead=c.instrumentPrograms.get("lead"),bassProgram=c.instrumentPrograms.get("bass");
+            if(lead!=null&&bassProgram!=null){
+                g.drawString("LEAD: "+InstrumentRegistry.name(lead)+"    /    BASS: "+
+                    InstrumentRegistry.name(bassProgram),(int)(w*.085),(int)(h*.924));
+            }
+        }
         g.drawString("MELODY  /  BASS  /  HARMONY",(int)(w*.085),(int)(h*.946));
         return ((DataBufferByte)img.getRaster().getDataBuffer()).getData();
     }
