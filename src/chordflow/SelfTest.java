@@ -82,8 +82,8 @@ public final class SelfTest {
             MusicV4.generate(i+100,25,"flow","noir","pop")).melody());
         check(musicalSignatures.size()>=18,"same-style-twenty-song-melodic-diversity");
         // Manual selection is an actual MIDI patch override, not only a UI label.
-        Map<String,Integer> selected=InstrumentRegistry.parse("lead:65,bass:32,pad:4,arp:-1");
-        Composition custom=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",selected);
+        Map<String,Integer> manualPatches=InstrumentRegistry.parse("lead:65,bass:32,pad:4,arp:-1");
+        Composition custom=MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",manualPatches);
         check(custom.instrumentPrograms.get("lead")==65&&custom.instrumentPrograms.get("bass")==32
             &&custom.instrumentPrograms.get("pad")==4&&!custom.instrumentPrograms.containsKey("arp"),
             "manual-instrument-patches-frozen");
@@ -91,7 +91,7 @@ public final class SelfTest {
             "manual-ensemble-no-hidden-percussion-or-arp");
         check(SongArrangement.gmProgram(custom,"lead")==65&&SongArrangement.gmProgram(custom,"bass")==32,
             "manual-program-mapping-used-by-midi");
-        check(custom.json().equals(MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",selected).json()),
+        check(custom.json().equals(MusicV4.generate(8080,40,"flow","noir","jazz",0,"auto-ensemble",manualPatches).json()),
             "manual-instrument-selection-deterministic");
         fails(()->InstrumentRegistry.parse("lead:127"),"invalid-manual-patch-rejected");
         fails(()->InstrumentRegistry.parse("lead:65,lead:65"),"duplicate-role-rejected");
