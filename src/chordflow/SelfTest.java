@@ -117,6 +117,14 @@ public final class SelfTest {
         try{SoundFontPresets.parsePresetHeaders(new byte[37]);}
         catch(java.io.IOException expected){invalidPhdr=true;}
         check(invalidPhdr,"invalid-soundfont-preset-record-rejected");
+        Composition celloArrangement=MusicV4.generate(55,45,"flow","noir","cinematic",0,
+            "auto-ensemble",Map.of("lead",42,"bass",43,"pad",48,"arp",-1));
+        check(celloArrangement.notes.stream().filter(n->n.voice().startsWith("lead"))
+            .allMatch(n->n.pitch()>=48&&n.pitch()<=76),
+            "cello-lead-stays-in-playable-register");
+        check(celloArrangement.notes.stream().filter(n->n.voice().startsWith("bass"))
+            .allMatch(n->n.pitch()>=36&&n.pitch()<=65),
+            "contrabass-stays-in-chosen-register");
         Set<String> motifShapes=new HashSet<>();
         for(long motifSeed=0;motifSeed<40;motifSeed++)
             motifShapes.add(Arrays.toString(MotifComposer.theme(motifSeed,"pop")));
