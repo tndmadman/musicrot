@@ -21,6 +21,9 @@ public final class InstrumentRegistry {
         Set<Integer> choices=new TreeSet<>();for(int p:patches)choices.add(p);
         ROLES.put(name,Collections.unmodifiableSet(choices));
     }
+    public static String name(int patch){
+        return NAMES.getOrDefault(patch,"GM "+(patch+1));
+    }
     public static void validate(String role,int patch){
         Set<Integer> choices=ROLES.get(role);
         if(choices==null||!(choices.contains(patch)||(patch==-1&&(role.equals("pad")||role.equals("arp")))))
