@@ -78,6 +78,9 @@ public final class MusicV4 {
         if(requestedKey<-1||requestedKey>11||(mode.equals("guitar")&&requestedKey>0))
             throw new IllegalArgumentException("MANUAL_KEY_INCOMPATIBLE_WITH_GUITAR_SHAPES");
         if(overrides==null)throw new IllegalArgumentException("INSTRUMENT_SELECTION_MISSING");
+        if(mode.equals("guitar")&&(overrides.containsKey("pad")||overrides.containsKey("arp"))||
+           mode.equals("flow")&&overrides.containsKey("guitar"))
+            throw new IllegalArgumentException("INSTRUMENT_ROLE_INCOMPATIBLE_WITH_MODE");
         if(variation<0||variation>12)throw new IllegalArgumentException("INVALID_COMPOSITION_VARIATION");
         if(!Composition.PRESETS.contains(instrumentPreference))
             throw new IllegalArgumentException("INSTRUMENT_PRESET_INVALID");
