@@ -117,6 +117,19 @@ public final class SelfTest {
         try{SoundFontPresets.parsePresetHeaders(new byte[37]);}
         catch(java.io.IOException expected){invalidPhdr=true;}
         check(invalidPhdr,"invalid-soundfont-preset-record-rejected");
+        Set<String> motifShapes=new HashSet<>();
+        for(long motifSeed=0;motifSeed<40;motifSeed++)
+            motifShapes.add(Arrays.toString(MotifComposer.theme(motifSeed,"pop")));
+        check(motifShapes.size()>=12,"seed-dependent-distinct-melodic-motifs");
+        check(Arrays.equals(MotifComposer.theme(82,"jazz"),
+            MotifComposer.theme(82,"jazz")),"motif-identity-deterministic");
+        Composition ending=MusicV4.generate(1987,60,"flow","noir","pop");
+        Composition.Note lastLead=ending.notes.stream().filter(n->n.voice().startsWith("lead"))
+            .max(Comparator.comparingDouble(Composition.Note::start)).orElseThrow();
+        int tonic=Arrays.asList("C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B")
+            .indexOf(ending.key);
+        check(tonic>=0&&Math.floorMod(lastLead.pitch(),12)==tonic,
+            "extended-song-final-melody-resolves-to-tonic");
         // A saved composition remains on the same GM programs even if the
         // legacy texture preference is transformed.
         Composition rethemed=custom.withInstrument("glass");
