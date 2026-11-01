@@ -48,20 +48,20 @@ with tempfile.TemporaryDirectory(prefix="cf-manual-instruments-") as work:
         print("PASS selectable GM catalog and genre starter recommendations")
 
         options = dict(count=1, randomSeed="false", seed=8080,
-                       seconds=20, style="jazz", bpm=112, key=5,
+                       seconds=20, style="jazz", bpm=112, key=5, scale="major",
                        instruments="lead:65,bass:32,pad:4,arp:-1")
         code, reply = post("/api/enqueue", **options)
         assert code == 200, reply
         job = json.loads(reply)["ids"]
         journal = (pathlib.Path(work) / "jobs" / (job + ".properties")).read_text()
-        for expected in ("requestedBpm=112", "requestedKey=5",
+        for expected in ("requestedBpm=112", "requestedKey=5", "requestedScale=major",
                          "instrumentOverrides=lead\\:65,bass\\:32,pad\\:4,arp\\:-1"):
             assert expected in journal, (expected, journal)
         code, claim = post("/api/claim", worker="manual-tester")
         assert code == 200 and claim.split("|")[0] == job, claim
         lease = claim.split("|")[7]
         leaseArgs = dict(id=job, worker="manual-tester", token=lease)
-        assert post("/api/job-music-options", **leaseArgs)[1] == "112|5"
+        assert post("/api/job-music-options", **leaseArgs)[1] == "112|5|major"
         assert post("/api/job-instruments", **leaseArgs)[1] == options["instruments"]
         print("PASS exact program, BPM and key choices survive durable job persistence and lease")
 
@@ -70,6 +70,8 @@ with tempfile.TemporaryDirectory(prefix="cf-manual-instruments-") as work:
             {"instruments": "lead:65,lead:65"},
             {"bpm": 300},
             {"key": 12},
+            {"scale": "unknown"},
+            {"mode": "guitar", "scale": "minor"},
             {"mode": "guitar", "key": 7},
         ]
         for invalid in badRequests:
