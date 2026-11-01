@@ -52,14 +52,14 @@ public final class InstrumentRegistry {
         StringBuilder b=new StringBuilder("{");int r=0;
         for(var entry:ROLES.entrySet()){
             if(r++>0)b.append(',');
-            b.append('"').append(entry.getKey()).append("\\":[");
+            b.append('"').append(entry.getKey()).append("\":[");
             if(entry.getKey().equals("pad")||entry.getKey().equals("arp"))
-                b.append("{\\"value\\":-1,\\"label\\":\\"None\\"},");
+                b.append("{\"value\":-1,\"label\":\"None\"},");
             int i=0;
             for(int p:entry.getValue()){
                 if(i++>0)b.append(',');
-                b.append("{\\"value\\":").append(p).append(",\\"label\\":\\"")
-                    .append(NAMES.get(p)).append("\\"}");
+                b.append("{\"value\":").append(p).append(",\"label\":\"")
+                    .append(NAMES.get(p)).append("\"}");
             }
             b.append(']');
         }
@@ -68,8 +68,8 @@ public final class InstrumentRegistry {
     public static String suggestionJson(String style){
         if(style.equals("auto"))style="pop";
         EnsembleCatalog.Ensemble e=EnsembleCatalog.choices(style).get(0);
-        return "{\\"lead\\":"+e.lead()+",\\"bass\\":"+e.bass()+
-            ",\\"pad\\":"+e.pad()+",\\"arp\\":"+e.arp()+
-            ",\\"guitar\\":"+EnsembleCatalog.guitarProgram(style,0)+"}";
+        return "{\"lead\":"+e.lead()+",\"bass\":"+e.bass()+
+            ",\"pad\":"+e.pad()+",\"arp\":"+e.arp()+
+            ",\"guitar\":"+EnsembleCatalog.guitarProgram(style,0)+"}";
     }
 }
