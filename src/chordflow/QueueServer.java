@@ -320,6 +320,42 @@ public final class QueueServer {
                 String[] options=rawOptions.split("\\|",-1);
                 if(options.length!=3)throw new IOException("INVALID_MUSIC_OPTIONS_LEASE");
                 int requestedBpm=Integer.parseInt(options[0]),requestedKey=Integer.parseInt(options[1]);String requestedScale=options[2];
+                String engine=post(client,url+"/api/job-engine?id="+encode(job)+
+                    "&worker="+encode(id)+"&token="+encode(token));
+                Production.Result result;
+                if(engine.equals("ace")){
+                    if(!v[3].equals("flow")||!exact.isEmpty())
+                        throw new IOException("ACE_BACKEND_INCOMPATIBLE_MIDI_CONFIGURATION");
+                    Path scratch=Files.createTempDirectory("chordflow-ace-worker-");
+                    try{
+                        Path wav=scratch.resolve("source.wav");
+                        NeuralAudio.Request req=null;
+                        boolean reserved=false;
+                        for(int variation=0;variation<3;variation++){
+                            long attemptSeed=Long.parseLong(v[1])^(0x9E3779B97F4A7C15L*variation);
+                            req=new NeuralAudio.Request(attemptSeed,Integer.parseInt(v[2]),
+                                requestedStyle,requestedBpm,requestedKey,requestedScale);
+                            NeuralAudio.generate(req,wav);
+                            AudioQualityReview.Report qa=AudioQualityReview.requireAcceptable(
+                                wav,Integer.parseInt(v[2]));
+                            String response=post(client,url+"/api/audio-reserve?id="+encode(job)+
+                                "&worker="+encode(id)+"&token="+encode(token)+
+                                "&fingerprint="+qa.envelopeFingerprint());
+                            if(response.equals("RESERVED")){reserved=true;break;}
+                            if(!response.equals("TOO_SIMILAR"))
+                                throw new IOException("AUDIO_RESERVATION_FAILED: "+response);
+                        }
+                        if(!reserved)throw new IOException("NEURAL_TOO_SIMILAR_AFTER_REGENERATION");
+                        result=Production.renderNeural(req,wav,out,v[4],
+                            Integer.parseInt(v[5]),Integer.parseInt(v[6]),30,v[8]);
+                    }finally{
+                        try(var files=Files.walk(scratch)){
+                            files.sorted(Comparator.reverseOrder()).forEach(p->{
+                                try{Files.deleteIfExists(p);}catch(IOException ignored){}
+                            });
+                        }
+                    }
+                }else if(engine.equals("midi")){
                 Composition c=null;
                 // Repair a collision by composing a new, coherent variant. Never
                 // scramble notes, change only metadata or render before reservation.
@@ -337,7 +373,8 @@ public final class QueueServer {
                     if(!result.equals("TOO_SIMILAR"))throw new IOException("MUSIC_RESERVATION_FAILED: "+result);
                 }
                 if(c==null)throw new IOException("MUSIC_TOO_SIMILAR_AFTER_BOUNDED_RECOMPOSITION");
-                Production.Result result=Production.render(c,out,Integer.parseInt(v[5]),Integer.parseInt(v[6]),30,v[8]);
+                result=Production.render(c,out,Integer.parseInt(v[5]),Integer.parseInt(v[6]),30,v[8]);
+                }else throw new IOException("UNKNOWN_AUDIO_ENGINE");
                 if(revoked.get()||Thread.currentThread().isInterrupted())throw new InterruptedException("LEASE_REVOKED");
                 String finalState=post(client,url+"/api/finish?id="+encode(job)+"&worker="+encode(id)+"&token="+encode(token)+"&filename="+encode(result.video().getFileName().toString())+"&sha="+result.sha256());
                 System.out.println("COMPLETE "+job+" server="+finalState);
