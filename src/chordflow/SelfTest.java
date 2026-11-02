@@ -385,6 +385,17 @@ public final class SelfTest {
             check(missingProgram,"missing-sampled-instrument-fails-closed");
 
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());
+            Set<String> midiRoles=new HashSet<>();
+            int midiExpressionEvents=0;
+            for(Track track:seq.getTracks())for(int event=0;event<track.size();event++){
+                MidiMessage message=track.get(event).getMessage();
+                if(message instanceof MetaMessage meta&&meta.getType()==3)
+                    midiRoles.add(new String(meta.getData(),java.nio.charset.StandardCharsets.UTF_8));
+                if(message instanceof ShortMessage cc&&cc.getCommand()==ShortMessage.CONTROL_CHANGE)
+                    midiExpressionEvents++;
+            }
+            check(midiRoles.contains("lead")&&midiRoles.contains("bass")&&midiExpressionEvents>=6,
+                "canonical-midi-instrument-identity-and-expressive-controllers");
             long midiOnsets=0;for(Track track:seq.getTracks())for(int mi=0;mi<track.size();mi++){
                 MidiMessage msg=track.get(mi).getMessage();
                 if(msg instanceof ShortMessage sm&&sm.getChannel()!=9&&sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0)midiOnsets++;
