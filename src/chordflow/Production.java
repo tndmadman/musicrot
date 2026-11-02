@@ -121,7 +121,7 @@ public final class Production {
                                      java.util.function.IntFunction<byte[]> framesSource)throws Exception{
         List<String> cmd=new ArrayList<>(List.of("ffmpeg","-hide_banner","-loglevel","error","-y","-f","rawvideo","-pix_fmt","bgr24","-video_size",w+"x"+h,"-framerate",String.valueOf(fps),"-i","pipe:0","-i",wav.toString(),"-map","0:v:0","-map","1:a:0","-c:v",encoder));
         if(encoder.equals("h264_nvenc"))cmd.addAll(List.of("-preset","p5","-cq","23","-b:v","0"));else cmd.addAll(List.of("-preset","veryfast","-crf","20"));
-        cmd.addAll(List.of("-pix_fmt","yuv420p","-r",String.valueOf(fps),"-frames:v",String.valueOf((int)Math.round(c.duration*fps)),"-af","loudnorm=I=-15:TP=-2.5:LRA=11","-c:a","aac","-ar","48000","-ac","2","-b:a","192k","-movflags","+faststart",candidate.toString()));
+        cmd.addAll(List.of("-pix_fmt","yuv420p","-r",String.valueOf(fps),"-frames:v",String.valueOf((int)Math.round(seconds*fps)),"-af","loudnorm=I=-15:TP=-2.5:LRA=11","-c:a","aac","-ar","48000","-ac","2","-b:a","192k","-movflags","+faststart",candidate.toString()));
         Process p=new ProcessBuilder(cmd).redirectError(log.toFile()).start();Exception error=null;
         try(OutputStream sink=new BufferedOutputStream(p.getOutputStream(),1<<20)){int frames=(int)Math.round(seconds*fps);for(int i=0;i<frames;i++){if(Thread.currentThread().isInterrupted())throw new InterruptedException("RENDER_CANCELLED");sink.write(framesSource.apply(i));}}
         catch(Exception e){error=e;p.destroyForcibly();}
