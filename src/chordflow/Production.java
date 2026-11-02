@@ -50,6 +50,20 @@ public final class Production {
      * It does not invent a MIDI composition or chord sheet. */
     public static Result renderNeural(NeuralAudio.Request req,Path out,String theme,
                                       int width,int height,int fps,String encoder)throws Exception{
+        Path temp=Files.createTempDirectory("chordflow-neural-source-");
+        try{
+            Path wav=temp.resolve("neural.wav");
+            NeuralAudio.generate(req,wav);
+            return renderNeural(req,wav,out,theme,width,height,fps,encoder);
+        }finally{
+            try(var files=Files.walk(temp)){files.sorted(Comparator.reverseOrder()).forEach(p->{
+                try{Files.deleteIfExists(p);}catch(IOException ignored){}
+            });}
+        }
+    }
+    /** Worker supplies a previously verified WAV after fingerprint reservation. */
+    public static Result renderNeural(NeuralAudio.Request req,Path verifiedWav,Path out,String theme,
+                                      int width,int height,int fps,String encoder)throws Exception{
         if(width<160||height<160||fps<10||fps>60||width%2!=0||height%2!=0)
             throw new IllegalArgumentException("INVALID_RENDER_SPEC");
         if(!has("ffmpeg")||!has("ffprobe"))throw new IOException("DEPENDENCY_UNAVAILABLE: ffmpeg/ffprobe");
@@ -58,8 +72,8 @@ public final class Production {
         Path video=out.resolve(job+".mp4"),manifest=out.resolve(job+".manifest.json");
         Path temp=Files.createTempDirectory(out,".cf-neural-");
         try{
-            Path wav=temp.resolve("neural.wav"),candidate=temp.resolve("candidate.mp4");
-            Audio.Stats stats=NeuralAudio.generate(req,wav);
+            Path wav=verifiedWav,candidate=temp.resolve("candidate.mp4");
+            Audio.Stats stats=SampledAudio.stats(wav);
             AudioQualityReview.requireAcceptable(wav,req.seconds());
             AudioVisual visual=new AudioVisual(wav,width,height,fps,req.seconds(),theme);
             String chosen=null;List<String> errors=new ArrayList<>();
