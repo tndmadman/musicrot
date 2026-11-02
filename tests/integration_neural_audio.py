@@ -25,7 +25,7 @@ with wave.open(buffer, "wb") as output:
         t = i / 48000
         attack = min(1, t * 8, (10 - t) * 4)
         x = math.sin(2 * math.pi * (220 if int(t) % 2 else 330) * t)
-        v = int(x * 0.13 * max(0, attack))
+        v = int(x * 0.13 * max(0, attack) * 32767)
         samples.extend(struct.pack("<hh", v, v))
     output.writeframes(samples)
 WAV = buffer.getvalue()
