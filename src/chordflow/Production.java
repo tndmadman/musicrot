@@ -46,13 +46,70 @@ public final class Production {
             return new Result(finalVideo,finalManifest,sha,audio,chosen,(System.nanoTime()-begin)/1_000_000);
         }finally{try(var files=Files.walk(temp)){files.sorted(Comparator.reverseOrder()).forEach(p->{try{Files.deleteIfExists(p);}catch(IOException ignored){}});}}
     }
+    /** Neural audio is rendered with verified amplitude visualization only.
+     * It does not invent a MIDI composition or chord sheet. */
+    public static Result renderNeural(NeuralAudio.Request req,Path out,String theme,
+                                      int width,int height,int fps,String encoder)throws Exception{
+        if(width<160||height<160||fps<10||fps>60||width%2!=0||height%2!=0)
+            throw new IllegalArgumentException("INVALID_RENDER_SPEC");
+        if(!has("ffmpeg")||!has("ffprobe"))throw new IOException("DEPENDENCY_UNAVAILABLE: ffmpeg/ffprobe");
+        long began=System.nanoTime();Files.createDirectories(out);
+        String job="chordflow-"+req.seed()+"-flow-"+width+"-"+UUID.randomUUID().toString().substring(0,8);
+        Path video=out.resolve(job+".mp4"),manifest=out.resolve(job+".manifest.json");
+        Path temp=Files.createTempDirectory(out,".cf-neural-");
+        try{
+            Path wav=temp.resolve("neural.wav"),candidate=temp.resolve("candidate.mp4");
+            Audio.Stats stats=NeuralAudio.generate(req,wav);
+            AudioQualityReview.requireAcceptable(wav,req.seconds());
+            AudioVisual visual=new AudioVisual(wav,width,height,fps,req.seconds(),theme);
+            String chosen=null;List<String> errors=new ArrayList<>();
+            for(String enc:encoder.equals("auto")?List.of("h264_nvenc","libx264"):
+                    List.of(encoder.equals("nvenc")?"h264_nvenc":"libx264")){
+                try{
+                    encodeFrames(req.seconds(),wav,candidate,temp.resolve("ffmpeg-"+enc+".log"),
+                        width,height,fps,enc,visual::frame);
+                    audit(candidate,req.seconds(),width,height,fps);
+                    chosen=enc;break;
+                }catch(Exception failure){
+                    errors.add(enc+": "+failure.getMessage());Files.deleteIfExists(candidate);
+                    if(enc.equals("libx264")||!encoder.equals("auto"))throw new IOException("NEURAL_VIDEO_ENCODE_FAILED "+errors,failure);
+                }
+            }
+            if(chosen==null)throw new IOException("NEURAL_VIDEO_ENCODER_UNAVAILABLE "+errors);
+            String sha=hash(candidate);
+            String json="{\"schemaVersion\":2,\"engine\":\"ace-step\",\"seed\":"+req.seed()+
+                ",\"style\":\""+NeuralAudio.styleFor(req)+"\",\"durationSeconds\":"+req.seconds()+
+                ",\"sha256\":\""+sha+"\",\"encoder\":\""+chosen+
+                "\",\"audioRms\":"+stats.rms()+",\"verified\":true}\n";
+            Path tempManifest=temp.resolve("manifest.json");Files.writeString(tempManifest,json);
+            try{
+                Files.move(candidate,video,StandardCopyOption.ATOMIC_MOVE);
+                Files.move(tempManifest,manifest,StandardCopyOption.ATOMIC_MOVE);
+            }catch(Exception ex){
+                Files.deleteIfExists(video);Files.deleteIfExists(manifest);throw ex;
+            }
+            return new Result(video,manifest,sha,stats,chosen,(System.nanoTime()-began)/1_000_000);
+        }finally{
+            try(var files=Files.walk(temp)){
+                files.sorted(Comparator.reverseOrder()).forEach(p->{
+                    try{Files.deleteIfExists(p);}catch(IOException ignored){}
+                });
+            }
+        }
+    }
     private static boolean has(String command){try{Process p=new ProcessBuilder(command,"-version").redirectErrorStream(true).start();p.getInputStream().transferTo(OutputStream.nullOutputStream());return p.waitFor()==0;}catch(Exception e){return false;}}
     private static void encode(Composition c,Path wav,Path candidate,Path log,int w,int h,int fps,String encoder)throws Exception{
+        Visual visual=new Visual(c,w,h,fps);
+        encodeFrames(c.duration,wav,candidate,log,w,h,fps,encoder,visual::frame);
+    }
+    private static void encodeFrames(double seconds,Path wav,Path candidate,Path log,
+                                     int w,int h,int fps,String encoder,
+                                     java.util.function.IntFunction<byte[]> framesSource)throws Exception{
         List<String> cmd=new ArrayList<>(List.of("ffmpeg","-hide_banner","-loglevel","error","-y","-f","rawvideo","-pix_fmt","bgr24","-video_size",w+"x"+h,"-framerate",String.valueOf(fps),"-i","pipe:0","-i",wav.toString(),"-map","0:v:0","-map","1:a:0","-c:v",encoder));
         if(encoder.equals("h264_nvenc"))cmd.addAll(List.of("-preset","p5","-cq","23","-b:v","0"));else cmd.addAll(List.of("-preset","veryfast","-crf","20"));
         cmd.addAll(List.of("-pix_fmt","yuv420p","-r",String.valueOf(fps),"-frames:v",String.valueOf((int)Math.round(c.duration*fps)),"-af","loudnorm=I=-15:TP=-2.5:LRA=11","-c:a","aac","-ar","48000","-ac","2","-b:a","192k","-movflags","+faststart",candidate.toString()));
-        Process p=new ProcessBuilder(cmd).redirectError(log.toFile()).start();Visual visual=new Visual(c,w,h,fps);Exception error=null;
-        try(OutputStream sink=new BufferedOutputStream(p.getOutputStream(),1<<20)){int frames=(int)Math.round(c.duration*fps);for(int i=0;i<frames;i++){if(Thread.currentThread().isInterrupted())throw new InterruptedException("RENDER_CANCELLED");sink.write(visual.frame(i));}}
+        Process p=new ProcessBuilder(cmd).redirectError(log.toFile()).start();Exception error=null;
+        try(OutputStream sink=new BufferedOutputStream(p.getOutputStream(),1<<20)){int frames=(int)Math.round(seconds*fps);for(int i=0;i<frames;i++){if(Thread.currentThread().isInterrupted())throw new InterruptedException("RENDER_CANCELLED");sink.write(framesSource.apply(i));}}
         catch(Exception e){error=e;p.destroyForcibly();}
         if(!p.waitFor(45,TimeUnit.SECONDS)){p.destroyForcibly();throw new IOException("FFMPEG_TIMEOUT");}
         if(error!=null)throw error;
