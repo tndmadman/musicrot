@@ -11,6 +11,12 @@ if ($quality -eq 'preview') {
     exit 0
 }
 
+if ($env:CHORDFLOW_ALLOW_NEURAL_ONLY -eq '1') {
+    Write-Host 'NEURAL-ONLY STARTUP: MIDI sampled jobs remain blocked unless a licensed SF2 and FluidSynth are configured.' -ForegroundColor Yellow
+    Write-Host 'ACE-Step API is a separate local service; start it before using the ACE music engine.'
+    exit 0
+}
+
 $bank = $null
 if ($env:CHORDFLOW_SOUNDFONT) {
     $bank = $env:CHORDFLOW_SOUNDFONT

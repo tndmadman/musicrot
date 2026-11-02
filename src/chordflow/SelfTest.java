@@ -9,6 +9,32 @@ public final class SelfTest {
     private static void check(boolean test,String name){if(!test)throw new AssertionError(name);System.out.println("PASS "+name);passed++;}
     private static void fails(Runnable r,String name){boolean failed=false;try{r.run();}catch(IllegalArgumentException e){failed=true;}check(failed,name);}
     public static void run()throws Exception{
+        // New backend requests retain instrumental-only semantics and never
+        // silently substitute fabricated MIDI for an audio model.
+        NeuralAudio.Request neural=new NeuralAudio.Request(123,20,"jazz",110,0,"minor");
+        String neuralPayload=NeuralAudio.payload(neural);
+        check(neuralPayload.contains("\"instrumental\":true")&&
+            neuralPayload.contains("\"lyrics\":\"[Instrumental]\"")&&
+            neuralPayload.contains("\"key_scale\":\"C Minor\"")&&
+            neuralPayload.contains("\"seed\":123"),"neural-request-instrumental-metadata");
+        check(NeuralAudio.completedAudioPath(Map.of("code",200,
+            "data",List.of(Map.of("status",1,
+                "result","[{\"file\":\"/v1/audio?path=fixture\"}]"))))
+            .equals("/v1/audio?path=fixture"),"neural-result-decoding");
+        fails(()->new NeuralAudio.Request(1,2,"pop",0,-1,"auto"),
+            "neural-minimum-duration-enforced");
+        List<SongFormPlanner.Section> form=SongFormPlanner.plan(120,99,"pop");
+        check(form.size()>=4&&form.stream().anyMatch(s->s.kind().equals("return")),
+            "sectional-song-form-intro-development-return-outro");
+        List<Composition.Harmony> planned=HarmonyPlanner.plan(99,"jazz",0,false,120,60);
+        check(planned.get(planned.size()-1).symbol().startsWith("C"),
+            "new-harmony-final-tonic");
+        check(planned.stream().anyMatch(h->h.symbol().startsWith("G")),
+            "new-harmony-dominant-approach");
+        Set<String> realPockets=new HashSet<>();
+        for(long i=0;i<20;i++)realPockets.add(Arrays.toString(
+            GroovePlanner.bassOnsets(i,"funk",0,(int)i)));
+        check(realPockets.size()>=3,"distinct-groove-personalities");
         Composition a=Music.generate(1234,10,"flow","gold"),b=Music.generate(1234,10,"flow","gold"),c=Music.generate(321,10,"flow","gold");
         check(a.json().equals(b.json()),"deterministic-seed");check(!a.json().equals(c.json()),"seed-variation");check(a.notes.size()>10,"multiple-notes");
         check(a.at(0).symbol().equals(a.chords.get(0).symbol()),"playhead-first-chord");
@@ -359,6 +385,17 @@ public final class SelfTest {
             check(missingProgram,"missing-sampled-instrument-fails-closed");
 
             Path midi=tmp.resolve("test.mid"),wav=tmp.resolve("test.wav");Music.writeMidi(a,midi);Sequence seq=MidiSystem.getSequence(midi.toFile());
+            Set<String> midiRoles=new HashSet<>();
+            int midiExpressionEvents=0;
+            for(Track track:seq.getTracks())for(int event=0;event<track.size();event++){
+                MidiMessage message=track.get(event).getMessage();
+                if(message instanceof MetaMessage meta&&meta.getType()==3)
+                    midiRoles.add(new String(meta.getData(),java.nio.charset.StandardCharsets.UTF_8));
+                if(message instanceof ShortMessage cc&&cc.getCommand()==ShortMessage.CONTROL_CHANGE)
+                    midiExpressionEvents++;
+            }
+            check(midiRoles.contains("lead")&&midiRoles.contains("bass")&&midiExpressionEvents>=6,
+                "canonical-midi-instrument-identity-and-expressive-controllers");
             long midiOnsets=0;for(Track track:seq.getTracks())for(int mi=0;mi<track.size();mi++){
                 MidiMessage msg=track.get(mi).getMessage();
                 if(msg instanceof ShortMessage sm&&sm.getChannel()!=9&&sm.getCommand()==ShortMessage.NOTE_ON&&sm.getData2()>0)midiOnsets++;

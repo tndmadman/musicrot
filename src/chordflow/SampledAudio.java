@@ -77,15 +77,22 @@ public final class SampledAudio {
             } catch (Exception e) {
                 throw new IOException("SAMPLED_MIDI_EXPORT_FAILED: "+e.getMessage(),e);
             }
-            invoke(List.of(executable,"-ni","-F",raw.toString(),"-r","48000",
-                sf.toString(),midi.toString()),work.resolve("fluidsynth.log"),180);
-            if(!Files.isRegularFile(raw)||Files.size(raw)<1000)
-                throw new IOException("SAMPLED_RENDER_EMPTY");
-            String duration=String.format(Locale.ROOT,"%.6f",c.duration);
-            invoke(List.of("ffmpeg","-hide_banner","-loglevel","error","-y","-i",raw.toString(),
-                "-af","atrim=0:"+duration+",apad=whole_dur="+duration,
-                "-t",duration,"-c:a","pcm_s16le","-ar","48000","-ac","2",wav.toString()),
-                work.resolve("ffmpeg.log"),120);
+            if("true".equalsIgnoreCase(System.getenv("CHORDFLOW_STEMS"))){
+                Files.createDirectories(wav.toAbsolutePath().getParent());
+                try{StemMixer.render(midi,sf,executable,wav,(int)Math.round(c.duration),work);}
+                catch(IOException e){throw e;}
+                catch(Exception e){throw new IOException("STEM_MIX_FAILED",e);}
+            }else{
+                invoke(List.of(executable,"-ni","-F",raw.toString(),"-r","48000",
+                    sf.toString(),midi.toString()),work.resolve("fluidsynth.log"),180);
+                if(!Files.isRegularFile(raw)||Files.size(raw)<1000)
+                    throw new IOException("SAMPLED_RENDER_EMPTY");
+                String duration=String.format(Locale.ROOT,"%.6f",c.duration);
+                invoke(List.of("ffmpeg","-hide_banner","-loglevel","error","-y","-i",raw.toString(),
+                    "-af","atrim=0:"+duration+",apad=whole_dur="+duration,
+                    "-t",duration,"-c:a","pcm_s16le","-ar","48000","-ac","2",wav.toString()),
+                    work.resolve("ffmpeg.log"),120);
+            }
             return stats(wav);
         }finally{
             try(var walk=Files.walk(work)){

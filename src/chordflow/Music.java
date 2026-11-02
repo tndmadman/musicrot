@@ -189,15 +189,21 @@ public final class Music {
             if(index>=channels.length)throw new IllegalArgumentException("MIDI_TOO_MANY_INSTRUMENTS");
             int channel=channels[index++];
             Track track=seq.createTrack();
+            byte[] nameBytes=lane.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            MetaMessage trackName=new MetaMessage();
+            trackName.setMessage(0x03,nameBytes,nameBytes.length);
+            track.add(new MidiEvent(trackName,0));
             int patch=SongArrangement.hasGeneratedIdentity(c)
                 ?SongArrangement.gmProgram(c,lane.getKey())
                 :gmProgram(lane.getKey(),c.instrumentPreset,c.mode);
             track.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE,channel,patch,0),0));
+            InstrumentExpression.initialize(track,channel,lane.getKey(),patch);
             List<MidiEvent> events=new ArrayList<>();
             for(Composition.Note n:lane.getValue()){
                 long at=Math.round(c.beatAtSeconds(n.start())*960);
                 long to=Math.round(c.beatAtSeconds(n.start()+n.duration())*960);
                 if(to<=at)throw new IllegalArgumentException("MIDI_NOTE_TOO_SHORT");
+                InstrumentExpression.phrase(track,channel,lane.getKey(),patch,n,at,to);
                 events.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON,channel,n.pitch(),n.velocity()),at));
                 events.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF,channel,n.pitch(),0),to));
             }

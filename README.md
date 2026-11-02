@@ -4,6 +4,14 @@ Windows-first, local, original procedural instrumental visualization engine. Not
 
 **Status: functional development build, not production-certification.** Flow and exact six-string guitar modes, deterministic original compositions, MIDI export, licensed MIDI import (restricted subset), persistent local controller/worker queue, in-dashboard seekable MP4 previews, licensed MIDI-to-video rendering, audio QA, full MP4 decode audit, SHA-256 manifests, NVENC attempt with x264 fallback, and Windows setup scripts are implemented. Remaining limitations are below.
 
+## V7: Real-audio generation and redesigned music composition
+
+MusicRot now supports an **optional local ACE-Step 1.5 full-audio engine** alongside its exact-note MIDI generator. The new MIDI flow composer creates song-form sections, harmonic cadences, motif-derived phrases and genre-specific bass/comp grooves. The sampled renderer also offers opt-in separate stems (`CHORDFLOW_STEMS=true`) and real MIDI expression.
+
+ACE-Step **requires a separately installed and running API server**. The Command Center's Music engine selector distinguishes exact-note MIDI from neural audio. Neural video renders measured waveform graphics, **never guessed chords or fictitious MIDI**. To start without an SF2 in neural-only mode, explicitly set `CHORDFLOW_ALLOW_NEURAL_ONLY=1`; default MIDI startup checks stay strict.
+
+See [V7 real-audio engine setup, capabilities and limits](docs/REAL_AUDIO_ENGINE_V7.md). GitHub Actions tests are integration checks; sound quality, RTX 3090 model inference and realistic instrument output still require actual listening and hardware verification.
+
 ## Windows 10 / 11 quick start
 
 **Java compatibility:** ChordFlow accepts JDK 20 or newer. The build uses `javac --release 20`, producing Java 20 class files even when you compile on JDK 21+. This avoids the earlier `Expected JDK 21, found javac 20` startup failure. If you switch JDKs, double-click `command_center_windows.bat` again to rebuild. A Java runtime 20+ and matching or newer compiler must be on PATH.

@@ -75,6 +75,11 @@ public final class CompositionIO {
     private static long longValue(Map<String,Object> o,String k){if(!o.containsKey(k))throw new IllegalArgumentException("MISSING_"+k);return longValueRaw(o.get(k));}
     private static int integer(Map<String,Object> o,String k){return intValue(o.get(k));}
     private static double number(Map<String,Object> o,String k){Object v=o.get(k);if(!(v instanceof Number n)||!Double.isFinite(n.doubleValue()))throw new IllegalArgumentException("EXPECTED_NUMBER_"+k);return n.doubleValue();}
+    /** Share the bounded parser with the optional loopback music service adapter. */
+    static Object parseJson(String source){
+        if(source==null||source.length()>1_000_000)throw new IllegalArgumentException("JSON_TOO_LARGE");
+        return new Parser(source).value();
+    }
     /** Limited recursive JSON parser with strict duplicate-key and trailing-data rejection. */
     private static final class Parser {
         private final String s;private int i;

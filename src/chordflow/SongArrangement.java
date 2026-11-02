@@ -46,6 +46,7 @@ public final class SongArrangement {
         Identity id=identity(planSeed,style);
         double beat=60.0/bpm,total=seconds/beat;
         int bars=(int)Math.ceil(total/4.0);
+        List<SongFormPlanner.Section> form=SongFormPlanner.plan(total,planSeed,style);
         boolean guitar=mode.equals("guitar");
         // Remove the old root/fifth-on-every-second-beat and constant .75-beat
         // arpeggiator. Keeping them would drown out the new musical identity.
@@ -56,7 +57,7 @@ public final class SongArrangement {
         // Lead phrasing survives, while sections control presence and intensity.
         for(int i=notes.size()-1;i>=0;i--){
             Composition.Note n=notes.get(i);
-            int sec=section(id,(int)Math.floor(n.start()/beat/4),bars);
+            int sec=guitar?section(id,(int)Math.floor(n.start()/beat/4),bars):sectionForForm(form,(int)Math.floor(n.start()/beat/4));
             if(n.voice().startsWith("lead")&&bars>=12){
                 if(sec==3&&((i+id.melody())%3!=0)&&n.start()>beat*4){
                     notes.remove(i); // actual breathing room in the breakdown
@@ -83,9 +84,9 @@ public final class SongArrangement {
                 76,beat,seconds);
             int firstBar=(int)Math.floor(from/4.0),lastBar=(int)Math.ceil(to/4.0);
             for(int bar=firstBar;bar<lastBar;bar++){
-                int sec=section(id,bar,bars);
+                int sec=guitar?section(id,bar,bars):sectionForForm(form,bar);
                 double e=energy(sec);
-                double[] bp=bassPattern(id.bass(),style,bar,id.groove());
+                double[] bp=GroovePlanner.bassOnsets(planSeed,style,bar,id.groove());
                 for(int j=0;j<bp.length;j++){
                     double at=bar*4.0+bp[j];
                     if(at<from+.12||at>=to-.04||at>=total-.04)continue;
@@ -105,7 +106,7 @@ public final class SongArrangement {
             }
             if(guitar)continue; // Keep physically valid, exact fret-derived guitar notes.
             int[] voiced=voiceChord(chord,hIndex==0?null:harmony.get(hIndex-1).pitches());
-            int sec=section(id,(int)Math.floor(from/4),bars);
+            int sec=guitar?section(id,(int)Math.floor(from/4),bars):sectionForForm(form,(int)Math.floor(from/4));
             double e=energy(sec);
             // Ensemble decides orchestration. The old code forced a pad and an
             // arpeggio into every song, even when they were incompatible.
@@ -138,16 +139,23 @@ public final class SongArrangement {
                 }
                 continue;
             }
+            double backingOffset=Math.min(Math.max(0,(to-from)*.22),
+                GroovePlanner.sustainOffset(planSeed,style,(int)(from/4)));
             switch(ensemble.backing()){
                 case "sustain"->{
-                    if(hasPad)pad(notes,voiced,from,Math.min(to-from,5.5),.66*e,beat,seconds);
+                    if(hasPad)pad(notes,voiced,from+backingOffset,Math.min(to-from-backingOffset,5.5),
+                        .66*e,beat,seconds);
                     if(hasArp&&to-from>4.0)
                         arp(notes,voiced,from+2.0,to,2.5,id.backing(),.33*e,beat,seconds);
                 }
                 case "comp"->{
                     // Short, rhythmic chord stabs: do not saturate the melody.
-                    if(hasPad)for(double at=from+gap;at<to-.09;at+=2.0)
-                        pad(notes,voiced,at,Math.min(.46,to-at),.57*e,beat,seconds);
+                    if(hasPad)for(int block=(int)Math.floor(from/4);block<(int)Math.ceil(to/4);block++)
+                        for(double offset:GroovePlanner.compOnsets(planSeed,style,block)){
+                            double at=block*4+offset;
+                            if(at>=from&&at<to-.08)
+                                pad(notes,voiced,at,Math.min(.46,to-at),.57*e,beat,seconds);
+                        }
                     if(hasArp&&!hasPad)
                         arp(notes,voiced,from+.75,to,1.5,id.backing(),.69*e,beat,seconds);
                 }
@@ -158,7 +166,8 @@ public final class SongArrangement {
                         pad(notes,voiced,from,Math.min(.60,to-from),.38*e,beat,seconds);
                 }
                 case "space"->{
-                    if(hasPad)pad(notes,voiced,from,Math.min(to-from,4.8),.47*e,beat,seconds);
+                    if(hasPad)pad(notes,voiced,from+backingOffset,Math.min(to-from-backingOffset,4.8),
+                        .47*e,beat,seconds);
                     if(hasArp&&to-from>2.5)
                         arp(notes,voiced,from+1.5,to,2.5,id.backing(),.44*e,beat,seconds);
                 }
@@ -166,6 +175,15 @@ public final class SongArrangement {
             }
         }
         // Do not generate percussion. Imported/archived MIDI drums are replay-only.
+    }
+    private static int sectionForForm(List<SongFormPlanner.Section> form,int bar){
+        return switch(SongFormPlanner.at(form,bar).kind()){
+            case "intro"->0;
+            case "outro"->4;
+            case "bridge"->3;
+            case "answer","return","development"->2;
+            default->1;
+        };
     }
     private static int[] voiceChord(int[] chord,int[] previous){
         int[] out=chord.clone();
