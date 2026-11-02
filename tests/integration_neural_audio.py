@@ -69,30 +69,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 with http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    worker = threading.Thread(target=server.serve_forever, daemon=False)
+    worker.start()
     env = dict(os.environ)
     env["CHORDFLOW_ACE_URL"] = "http://127.0.0.1:%d" % server.server_port
-    with tempfile.TemporaryDirectory(prefix="chordflow-neural-integration-") as work:
-        cmd = [
-            "java", "-Djava.awt.headless=true", "-cp", str(ROOT / "build"),
-            "chordflow.Main", "render", "--engine", "ace", "--seconds", "10",
-            "--seed", "123", "--style", "jazz", "--bpm", "110",
-            "--key", "0", "--scale", "minor",
-            "--width", "240", "--height", "426", "--fps", "10",
-            "--encoder", "x264", "--out", work,
-        ]
-        result = subprocess.run(cmd, cwd=ROOT, env=env,
-                                capture_output=True, text=True, timeout=180)
-        assert result.returncode == 0, result.stdout + "\n" + result.stderr
-        assert Handler.submission["instrumental"] is True
-        assert Handler.submission["lyrics"] == "[Instrumental]"
-        assert Handler.submission["key_scale"] == "C Minor"
-        assert Handler.submission["audio_duration"] == 10
-        assert Handler.submission["use_random_seed"] is False
-        video = list(pathlib.Path(work).glob("*.mp4"))
-        manifest = list(pathlib.Path(work).glob("*.manifest.json"))
-        assert len(video) == len(manifest) == 1
-        assert json.loads(manifest[0].read_text())["engine"] == "ace-step"
-        assert not list(pathlib.Path(work).glob("*.mid")), "Neural audio is not fictitious MIDI"
-        assert not list(pathlib.Path(work).glob("*.composition.json"))
-        print("PASS ACE-Step protocol, audio download, verified waveform video, no fake MIDI")
+    try:
+        with tempfile.TemporaryDirectory(prefix="chordflow-neural-integration-") as work:
+            cmd = [
+                "java", "-Djava.awt.headless=true", "-cp", str(ROOT / "build"),
+                "chordflow.Main", "render", "--engine", "ace", "--seconds", "10",
+                "--seed", "123", "--style", "jazz", "--bpm", "110",
+                "--key", "0", "--scale", "minor",
+                "--width", "240", "--height", "426", "--fps", "10",
+                "--encoder", "x264", "--out", work,
+            ]
+            result = subprocess.run(cmd, cwd=ROOT, env=env,
+                                    capture_output=True, text=True, timeout=180)
+            assert result.returncode == 0, result.stdout + "\n" + result.stderr
+            assert Handler.submission["instrumental"] is True
+            assert Handler.submission["lyrics"] == "[Instrumental]"
+            assert Handler.submission["key_scale"] == "C Minor"
+            assert Handler.submission["audio_duration"] == 10
+            assert Handler.submission["use_random_seed"] is False
+            video = list(pathlib.Path(work).glob("*.mp4"))
+            manifest = list(pathlib.Path(work).glob("*.manifest.json"))
+            assert len(video) == len(manifest) == 1
+            assert json.loads(manifest[0].read_text())["engine"] == "ace-step"
+            assert not list(pathlib.Path(work).glob("*.mid")), "Neural audio is not fictitious MIDI"
+            assert not list(pathlib.Path(work).glob("*.composition.json"))
+            print("PASS ACE-Step protocol, audio download, verified waveform video, no fake MIDI")
+    finally:
+        server.shutdown()
+        worker.join(timeout=10)
