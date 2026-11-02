@@ -365,12 +365,12 @@ public final class QueueServer {
                     MusicQuality.Report quality=MusicQuality.analyze(candidate);
                     String signature=MusicFingerprint.of(candidate).encode();
                     String style=candidate.title.split(" ")[1];
-                    String result=post(client,url+"/api/music-reserve?id="+encode(job)+"&worker="+encode(id)+
+                    String reservationReply=post(client,url+"/api/music-reserve?id="+encode(job)+"&worker="+encode(id)+
                         "&token="+encode(token)+"&signature="+encode(signature)+"&variation="+variation+
                         "&style="+encode(style)+"&leadRepeats="+quality.repeatedMelodyWindows()+
                         "&grooveRepeats="+quality.repeatedGrooveWindows());
-                    if(result.equals("RESERVED")){c=candidate;break;}
-                    if(!result.equals("TOO_SIMILAR"))throw new IOException("MUSIC_RESERVATION_FAILED: "+result);
+                    if(reservationReply.equals("RESERVED")){c=candidate;break;}
+                    if(!reservationReply.equals("TOO_SIMILAR"))throw new IOException("MUSIC_RESERVATION_FAILED: "+reservationReply);
                 }
                 if(c==null)throw new IOException("MUSIC_TOO_SIMILAR_AFTER_BOUNDED_RECOMPOSITION");
                 result=Production.render(c,out,Integer.parseInt(v[5]),Integer.parseInt(v[6]),30,v[8]);
