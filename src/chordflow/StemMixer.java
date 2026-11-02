@@ -34,6 +34,24 @@ public final class StemMixer {
             dest.add(new MidiEvent(event.getMessage(),event.getTick()));
         }
     }
+    private static String role(Track track){
+        for(int i=0;i<track.size();i++){
+            MidiMessage message=track.get(i).getMessage();
+            if(message instanceof MetaMessage meta&&meta.getType()==3)
+                return new String(meta.getData(),java.nio.charset.StandardCharsets.UTF_8);
+        }
+        return "imported";
+    }
+    private static String instrumentProcessing(String role){
+        return switch(role){
+            case "bass"->"highpass=f=28,lowpass=f=8500,volume=0.88";
+            case "lead"->"highpass=f=85,equalizer=f=2500:t=q:w=1.4:g=1.5,volume=0.95";
+            case "pad"->"highpass=f=130,volume=0.70";
+            case "arp"->"highpass=f=150,volume=0.77";
+            case "guitar"->"highpass=f=70,volume=0.83";
+            default->"highpass=f=35,volume=0.82";
+        };
+    }
     /** Input MIDI remains canonical; exactly the existing notes are in the stems. */
     public static void render(Path midi,Path soundbank,String synth,Path out,
                               int seconds,Path temp)throws Exception{
@@ -41,6 +59,7 @@ public final class StemMixer {
         Track[] tracks=sequence.getTracks();
         if(tracks.length<2)throw new IOException("STEMS_NEED_INSTRUMENT_TRACKS");
         List<Path> stems=new ArrayList<>();
+        List<String> roles=new ArrayList<>();
         int lane=0;
         for(int i=1;i<tracks.length;i++){
             if(!sounds(tracks[i]))continue;
@@ -54,7 +73,7 @@ public final class StemMixer {
                 soundbank.toString(),part.toString()),temp.resolve("synth-"+lane+".log"),180);
             if(!Files.isRegularFile(sample)||Files.size(sample)<512)
                 throw new IOException("STEM_EMPTY: "+lane);
-            stems.add(sample);lane++;
+            stems.add(sample);roles.add(role(tracks[i]));lane++;
         }
         if(stems.isEmpty()||stems.size()>15)throw new IOException("STEM_COUNT_INVALID");
         List<String> cmd=new ArrayList<>(List.of("ffmpeg","-hide_banner","-loglevel",
@@ -63,7 +82,8 @@ public final class StemMixer {
         StringBuilder graph=new StringBuilder();
         for(int i=0;i<stems.size();i++){
             // Headroom remains even for layered arrangements; avoid hard panning.
-            graph.append("[").append(i).append(":a]volume=0.82,highpass=f=30[s")
+            graph.append("[").append(i).append(":a]")
+                .append(instrumentProcessing(roles.get(i))).append("[s")
                 .append(i).append("];");
         }
         for(int i=0;i<stems.size();i++)graph.append("[s").append(i).append("]");
