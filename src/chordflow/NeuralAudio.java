@@ -139,13 +139,12 @@ public final class NeuralAudio {
     }
     private static void invoke(List<String> args,int timeout)throws IOException {
         try{
-            Process process=new ProcessBuilder(args).redirectErrorStream(true).start();
-            byte[] output=process.getInputStream().readNBytes(8192);
+            Process process=new ProcessBuilder(args).redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
             if(!process.waitFor(timeout,TimeUnit.SECONDS)){
                 process.destroyForcibly();throw new IOException("ACE_AUDIO_FFMPEG_TIMEOUT");
             }
-            if(process.exitValue()!=0)throw new IOException("ACE_AUDIO_FFMPEG_FAILED: "+
-                new String(output,StandardCharsets.UTF_8));
+            if(process.exitValue()!=0)throw new IOException("ACE_AUDIO_FFMPEG_FAILED_EXIT_"+process.exitValue());
         }catch(InterruptedException ex){
             Thread.currentThread().interrupt();
             throw new IOException("ACE_AUDIO_FFMPEG_INTERRUPTED",ex);
