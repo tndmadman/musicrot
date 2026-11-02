@@ -120,11 +120,13 @@ public final class MusicV4 {
             EnsembleCatalog.select(planSeed,style.id(),ensemblePreference),overrides,style.id());
         if(guitar&&overrides.containsKey("lead"))
             InstrumentRegistry.validate("guitar",overrides.get("lead"));
-        List<Composition.Harmony> harmony=harmonize(plan,r,seconds);
+        List<Composition.Harmony> harmony=guitar?harmonize(plan,r,seconds):
+            HarmonyPlanner.plan(planSeed,style.id(),key,minor,tempo,seconds);
         List<Composition.Note> notes=new ArrayList<>();
-        // Newly generated songs are entirely instrument-led. No automatic drum events.
+        // New songs have no automatic percussion; all rhythm is instrument-led.
         List<Composition.Drum> drums=List.of();
-        melody(plan,harmony,notes,seconds);
+        if(guitar)melody(plan,harmony,notes,seconds);
+        else PhraseComposer.compose(planSeed,style.id(),key,minor,tempo,seconds,harmony,notes);
         // Preserve exact physical guitar fretting while varying the rhythm section.
         if(guitar)accompaniment(plan,harmony,notes,seconds,r);
         SongArrangement.arrange(planSeed,style.id(),mode,tempo,seconds,harmony,notes,ensemble);
