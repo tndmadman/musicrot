@@ -34,11 +34,11 @@ public final class GroovePlanner {
     }
     public static double[] compOnsets(long seed,String style,int bar){
         double[][] patterns=switch(style){
-            case "funk"->new double[][]{{.5,1.5,2.75,3.5},{.75,1.75,3.25}};
-            case "jazz"->new double[][]{{.5,2.5},{1.5,3.25}};
-            case "rock"->new double[][]{{0,2},{.5,2.5}};
-            case "ambient","cinematic"->new double[][]{{0},{1}};
-            default->new double[][]{{.5,2.5},{1,3}};
+            case "funk"->new double[][]{{.5,1.5,2.75,3.5},{.75,1.75,3.25},{.25,1.5,2.5},{.5,1.25,3.25},{.75,2.5,3.5}};
+            case "jazz"->new double[][]{{.5,2.5},{1.5,3.25},{.75,2.75},{1,2.5,3.5},{.5,1.75,3.25}};
+            case "rock"->new double[][]{{0,2},{.5,2.5},{0,1.5,3},{.5,2,3.5},{0,2.75}};
+            case "ambient","cinematic"->new double[][]{{0},{1},{.5},{2},{0,2.5}};
+            default->new double[][]{{.5,2.5},{1,3},{.75,2.25},{0,2.75},{1.5,3.5}};
         };
         long p=seed^((long)(bar/4)*0xD6E8FEB86659FD93L);
         return patterns[Math.floorMod(p,patterns.length)].clone();
