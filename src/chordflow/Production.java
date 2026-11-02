@@ -125,7 +125,7 @@ public final class Production {
         Process p=new ProcessBuilder(cmd).redirectError(log.toFile()).start();Exception error=null;
         try(OutputStream sink=new BufferedOutputStream(p.getOutputStream(),1<<20)){int frames=(int)Math.round(seconds*fps);for(int i=0;i<frames;i++){if(Thread.currentThread().isInterrupted())throw new InterruptedException("RENDER_CANCELLED");sink.write(framesSource.apply(i));}}
         catch(Exception e){error=e;p.destroyForcibly();}
-        if(!p.waitFor(45,TimeUnit.SECONDS)){p.destroyForcibly();throw new IOException("FFMPEG_TIMEOUT");}
+        long timeout=Math.max(45,Math.min(900,(long)Math.ceil(seconds*(w>=1080?6.0:3.0))));if(!p.waitFor(timeout,TimeUnit.SECONDS)){p.destroyForcibly();throw new IOException("FFMPEG_TIMEOUT");}
         if(error!=null)throw error;
         if(p.exitValue()!=0)throw new IOException("FFMPEG_EXIT_"+p.exitValue()+" "+Files.readString(log));
     }
