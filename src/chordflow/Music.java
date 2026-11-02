@@ -189,6 +189,10 @@ public final class Music {
             if(index>=channels.length)throw new IllegalArgumentException("MIDI_TOO_MANY_INSTRUMENTS");
             int channel=channels[index++];
             Track track=seq.createTrack();
+            byte[] nameBytes=lane.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            MetaMessage trackName=new MetaMessage();
+            trackName.setMessage(0x03,nameBytes,nameBytes.length);
+            track.add(new MidiEvent(trackName,0));
             int patch=SongArrangement.hasGeneratedIdentity(c)
                 ?SongArrangement.gmProgram(c,lane.getKey())
                 :gmProgram(lane.getKey(),c.instrumentPreset,c.mode);
