@@ -193,11 +193,13 @@ public final class Music {
                 ?SongArrangement.gmProgram(c,lane.getKey())
                 :gmProgram(lane.getKey(),c.instrumentPreset,c.mode);
             track.add(new MidiEvent(new ShortMessage(ShortMessage.PROGRAM_CHANGE,channel,patch,0),0));
+            InstrumentExpression.initialize(track,channel,lane.getKey(),patch);
             List<MidiEvent> events=new ArrayList<>();
             for(Composition.Note n:lane.getValue()){
                 long at=Math.round(c.beatAtSeconds(n.start())*960);
                 long to=Math.round(c.beatAtSeconds(n.start()+n.duration())*960);
                 if(to<=at)throw new IllegalArgumentException("MIDI_NOTE_TOO_SHORT");
+                InstrumentExpression.phrase(track,channel,lane.getKey(),patch,n,at,to);
                 events.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON,channel,n.pitch(),n.velocity()),at));
                 events.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF,channel,n.pitch(),0),to));
             }
