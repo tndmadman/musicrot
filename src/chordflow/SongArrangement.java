@@ -139,9 +139,12 @@ public final class SongArrangement {
                 }
                 continue;
             }
+            double backingOffset=Math.min(Math.max(0,(to-from)*.22),
+                GroovePlanner.sustainOffset(planSeed,style,(int)(from/4)));
             switch(ensemble.backing()){
                 case "sustain"->{
-                    if(hasPad)pad(notes,voiced,from,Math.min(to-from,5.5),.66*e,beat,seconds);
+                    if(hasPad)pad(notes,voiced,from+backingOffset,Math.min(to-from-backingOffset,5.5),
+                        .66*e,beat,seconds);
                     if(hasArp&&to-from>4.0)
                         arp(notes,voiced,from+2.0,to,2.5,id.backing(),.33*e,beat,seconds);
                 }
@@ -163,7 +166,8 @@ public final class SongArrangement {
                         pad(notes,voiced,from,Math.min(.60,to-from),.38*e,beat,seconds);
                 }
                 case "space"->{
-                    if(hasPad)pad(notes,voiced,from,Math.min(to-from,4.8),.47*e,beat,seconds);
+                    if(hasPad)pad(notes,voiced,from+backingOffset,Math.min(to-from-backingOffset,4.8),
+                        .47*e,beat,seconds);
                     if(hasArp&&to-from>2.5)
                         arp(notes,voiced,from+1.5,to,2.5,id.backing(),.44*e,beat,seconds);
                 }
