@@ -32,6 +32,13 @@ public final class GroovePlanner {
         }
         return pattern;
     }
+    public static double sustainOffset(long seed,String style,int bar){
+        long value=seed^((long)style.hashCode()<<32)^0x96DE1B173F119089L^
+            ((long)(bar/4)*0xD6E8FEB86659FD93L);
+        value^=value>>>30;value*=0xBF58476D1CE4E5B9L;
+        value^=value>>>27;
+        return new double[]{0,.25,.5,.75,1.0}[Math.floorMod(value,5)];
+    }
     public static double[] compOnsets(long seed,String style,int bar){
         double[][] patterns=switch(style){
             case "funk"->new double[][]{{.5,1.5,2.75,3.5},{.75,1.75,3.25},{.25,1.5,2.5},{.5,1.25,3.25},{.75,2.5,3.5}};
