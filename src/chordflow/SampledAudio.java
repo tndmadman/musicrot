@@ -79,7 +79,9 @@ public final class SampledAudio {
             }
             if("true".equalsIgnoreCase(System.getenv("CHORDFLOW_STEMS"))){
                 Files.createDirectories(wav.toAbsolutePath().getParent());
-                StemMixer.render(midi,sf,executable,wav,(int)Math.round(c.duration),work);
+                try{StemMixer.render(midi,sf,executable,wav,(int)Math.round(c.duration),work);}
+                catch(IOException e){throw e;}
+                catch(Exception e){throw new IOException("STEM_MIX_FAILED",e);}
             }else{
                 invoke(List.of(executable,"-ni","-F",raw.toString(),"-r","48000",
                     sf.toString(),midi.toString()),work.resolve("fluidsynth.log"),180);
